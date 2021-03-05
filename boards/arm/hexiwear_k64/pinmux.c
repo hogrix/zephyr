@@ -9,25 +9,29 @@
 #include <drivers/gpio.h>
 #include <fsl_port.h>
 
-static int hexiwear_k64_pinmux_init(struct device *dev)
+static int hexiwear_k64_pinmux_init(const struct device *dev)
 {
 	ARG_UNUSED(dev);
 
-#ifdef CONFIG_PINMUX_MCUX_PORTB
-	struct device *portb =
-		device_get_binding(CONFIG_PINMUX_MCUX_PORTB_NAME);
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(portb), okay)
+	__unused const struct device *portb =
+		DEVICE_DT_GET(DT_NODELABEL(portb));
+	__ASSERT_NO_MSG(device_is_ready(portb));
 #endif
-#ifdef CONFIG_PINMUX_MCUX_PORTC
-	struct device *portc =
-		device_get_binding(CONFIG_PINMUX_MCUX_PORTC_NAME);
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(portc), okay)
+	__unused const struct device *portc =
+		DEVICE_DT_GET(DT_NODELABEL(portc));
+	__ASSERT_NO_MSG(device_is_ready(portc));
 #endif
-#ifdef CONFIG_PINMUX_MCUX_PORTD
-	struct device *portd =
-		device_get_binding(CONFIG_PINMUX_MCUX_PORTD_NAME);
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(portd), okay)
+	__unused const struct device *portd =
+		DEVICE_DT_GET(DT_NODELABEL(portd));
+	__ASSERT_NO_MSG(device_is_ready(portd));
 #endif
-#ifdef CONFIG_PINMUX_MCUX_PORTE
-	struct device *porte =
-		device_get_binding(CONFIG_PINMUX_MCUX_PORTE_NAME);
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(porte), okay)
+	__unused const struct device *porte =
+		DEVICE_DT_GET(DT_NODELABEL(porte));
+	__ASSERT_NO_MSG(device_is_ready(porte));
 #endif
 
 #if DT_NODE_HAS_COMPAT_STATUS(DT_NODELABEL(ftm3), nxp_kinetis_ftm_pwm, okay) && CONFIG_PWM
@@ -52,7 +56,7 @@ static int hexiwear_k64_pinmux_init(struct device *dev)
 	/* 3V3B_EN */
 	pinmux_pin_set(portb, 12, PORT_PCR_MUX(kPORT_MuxAsGpio));
 
-	struct device *gpiob =
+	const struct device *gpiob =
 	       device_get_binding(DT_LABEL(DT_NODELABEL(gpiob)));
 
 	gpio_pin_configure(gpiob, 12, GPIO_OUTPUT_LOW);
@@ -84,13 +88,14 @@ static int hexiwear_k64_pinmux_init(struct device *dev)
 #endif
 
 #if defined(CONFIG_MAX30101) && DT_NODE_HAS_STATUS(DT_NODELABEL(gpioa), okay)
-	struct device *porta =
-		device_get_binding(CONFIG_PINMUX_MCUX_PORTA_NAME);
+	const struct device *porta =
+		DEVICE_DT_GET(DT_NODELABEL(porta));
+	__ASSERT_NO_MSG(device_is_ready(porta));
 
 	/* LDO - MAX30101 power supply */
 	pinmux_pin_set(porta, 29, PORT_PCR_MUX(kPORT_MuxAsGpio));
 
-	struct device *gpioa =
+	const struct device *gpioa =
 	       device_get_binding(DT_LABEL(DT_NODELABEL(gpioa)));
 
 	gpio_pin_configure(gpioa, 29, GPIO_OUTPUT_HIGH);
@@ -99,7 +104,7 @@ static int hexiwear_k64_pinmux_init(struct device *dev)
 #ifdef CONFIG_BATTERY_SENSE
 	pinmux_pin_set(portc, 14, PORT_PCR_MUX(kPORT_MuxAsGpio));
 
-	struct device *gpioc =
+	const struct device *gpioc =
 	       device_get_binding(DT_LABEL(DT_NODELABEL(gpioc)));
 
 	gpio_pin_configure(gpioc, 14, GPIO_OUTPUT_LOW);

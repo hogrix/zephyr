@@ -11,7 +11,7 @@
 #include <logging/log_output.h>
 #include <sys/printk.h>
 #include <init.h>
-#include <assert.h>
+#include <sys/__assert.h>
 #include <sys/atomic.h>
 #include <ctype.h>
 #include <logging/log_frontend.h>
@@ -99,6 +99,7 @@ uint32_t z_log_get_s_mask(const char *str, uint32_t nargs)
 			}
 			arm = false;
 			arg++;
+		} else {
 		}
 	}
 
@@ -119,7 +120,7 @@ static bool is_rodata(const void *addr)
 	extern const char *_image_rodata_end[];
 	#define RO_START _image_rodata_start
 	#define RO_END _image_rodata_end
-#elif defined(CONFIG_NIOS2) || defined(CONFIG_RISCV)
+#elif defined(CONFIG_NIOS2) || defined(CONFIG_RISCV) || defined(CONFIG_SPARC)
 	extern const char *_image_rom_start[];
 	extern const char *_image_rom_end[];
 	#define RO_START _image_rom_start
@@ -181,24 +182,11 @@ static void detect_missed_strdup(struct log_msg *msg)
 #undef ERR_MSG
 }
 
-static inline void msg_finalize(struct log_msg *msg,
-				struct log_msg_ids src_level)
+static void z_log_msg_post_finalize(void)
 {
-	unsigned int key;
-
-	msg->hdr.ids = src_level;
-	msg->hdr.timestamp = timestamp_func();
-
 	atomic_inc(&buffered_cnt);
-
-	key = irq_lock();
-
-	log_list_add_tail(&list, msg);
-
-	irq_unlock(key);
-
 	if (panic_mode) {
-		key = irq_lock();
+		unsigned int key = irq_lock();
 		(void)log_process(false);
 		irq_unlock(key);
 	} else if (proc_tid != NULL && buffered_cnt == 1) {
@@ -210,7 +198,25 @@ static inline void msg_finalize(struct log_msg *msg,
 			k_timer_stop(&log_process_thread_timer);
 			k_sem_give(&log_process_thread_sem);
 		}
+	} else {
 	}
+}
+
+static inline void msg_finalize(struct log_msg *msg,
+				struct log_msg_ids src_level)
+{
+	unsigned int key;
+
+	msg->hdr.ids = src_level;
+	msg->hdr.timestamp = timestamp_func();
+
+	key = irq_lock();
+
+	log_list_add_tail(&list, msg);
+
+	irq_unlock(key);
+
+	z_log_msg_post_finalize();
 }
 
 void log_0(const char *str, struct log_msg_ids src_level)
@@ -370,6 +376,7 @@ uint32_t log_count_args(const char *fmt)
 		} else if (prev) {
 			args++;
 			prev = false;
+		} else {
 		}
 		fmt++;
 	}
@@ -391,8 +398,12 @@ void log_generic(struct log_msg_ids src_level, const char *fmt, va_list ap,
 			backend = log_backend_get(i);
 
 			if (log_backend_is_active(backend)) {
+				va_list ap_tmp;
+
+				va_copy(ap_tmp, ap);
 				log_backend_put_sync_string(backend, src_level,
-						     timestamp, fmt, ap);
+						     timestamp, fmt, ap_tmp);
+				va_end(ap_tmp);
 			}
 		}
 	} else {
@@ -516,7 +527,7 @@ void log_core_init(void)
 
 void log_init(void)
 {
-	assert(log_backend_count_get() < LOG_FILTERS_NUM_OF_SLOTS);
+	__ASSERT_NO_MSG(log_backend_count_get() < LOG_FILTERS_NUM_OF_SLOTS);
 	int i;
 
 	if (IS_ENABLED(CONFIG_LOG_FRONTEND)) {
@@ -559,7 +570,7 @@ static void thread_set(k_tid_t process_tid)
 void log_thread_set(k_tid_t process_tid)
 {
 	if (IS_ENABLED(CONFIG_LOG_PROCESS_THREAD)) {
-		assert(0);
+		__ASSERT_NO_MSG(0);
 	} else {
 		thread_set(process_tid);
 	}
@@ -752,7 +763,7 @@ uint32_t z_impl_log_filter_set(struct log_backend const *const backend,
 			    uint32_t src_id,
 			    uint32_t level)
 {
-	assert(src_id < log_sources_count());
+	__ASSERT_NO_MSG(src_id < log_sources_count());
 
 	if (IS_ENABLED(CONFIG_LOG_RUNTIME_FILTERING)) {
 		uint32_t new_aggr_filter;
@@ -760,13 +771,14 @@ uint32_t z_impl_log_filter_set(struct log_backend const *const backend,
 		uint32_t *filters = log_dynamic_filters_get(src_id);
 
 		if (backend == NULL) {
-			struct log_backend const *backend;
+			struct log_backend const *iter_backend;
 			uint32_t max = 0U;
 			uint32_t current;
 
 			for (int i = 0; i < log_backend_count_get(); i++) {
-				backend = log_backend_get(i);
-				current = log_filter_set(backend, domain_id,
+				iter_backend = log_backend_get(i);
+				current = log_filter_set(iter_backend,
+							 domain_id,
 							 src_id, level);
 				max = MAX(current, max);
 			}
@@ -861,7 +873,7 @@ uint32_t log_filter_get(struct log_backend const *const backend,
 		     uint32_t src_id,
 		     bool runtime)
 {
-	assert(src_id < log_sources_count());
+	__ASSERT_NO_MSG(src_id < log_sources_count());
 
 	if (IS_ENABLED(CONFIG_LOG_RUNTIME_FILTERING) && runtime) {
 		uint32_t *filters = log_dynamic_filters_get(src_id);
@@ -891,7 +903,7 @@ char *log_strdup(const char *str)
 
 	if (IS_ENABLED(CONFIG_LOG_STRDUP_POOL_PROFILING)) {
 		size_t slen = strlen(str);
-		struct k_spinlock lock;
+		static struct k_spinlock lock;
 		k_spinlock_key_t key;
 
 		key = k_spin_lock(&lock);
@@ -1181,10 +1193,10 @@ static void log_process_thread_func(void *dummy1, void *dummy2, void *dummy3)
 	}
 }
 
-K_THREAD_STACK_DEFINE(logging_stack, CONFIG_LOG_PROCESS_THREAD_STACK_SIZE);
+K_KERNEL_STACK_DEFINE(logging_stack, CONFIG_LOG_PROCESS_THREAD_STACK_SIZE);
 struct k_thread logging_thread;
 
-static int enable_logger(struct device *arg)
+static int enable_logger(const struct device *arg)
 {
 	ARG_UNUSED(arg);
 
@@ -1193,7 +1205,7 @@ static int enable_logger(struct device *arg)
 				log_process_thread_timer_expiry_fn, NULL);
 		/* start logging thread */
 		k_thread_create(&logging_thread, logging_stack,
-				K_THREAD_STACK_SIZEOF(logging_stack),
+				K_KERNEL_STACK_SIZEOF(logging_stack),
 				log_process_thread_func, NULL, NULL, NULL,
 				K_LOWEST_APPLICATION_THREAD_PRIO, 0, K_NO_WAIT);
 		k_thread_name_set(&logging_thread, "logging");

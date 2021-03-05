@@ -9,26 +9,8 @@
 		 * instruction.  See include/sw_isr_table.h.
 		 */
 		. = ALIGN(CONFIG_ARCH_SW_ISR_TABLE_ALIGN);
-		*(_SW_ISR_TABLE_SECTION_NAME)
+		*(_SW_ISR_TABLE_SECTION_SYMS)
 	} GROUP_DATA_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
-#endif
-
-/*
- * Space for storing per device busy bitmap. Since we do not know beforehand
- * the number of devices, we go through the below mechanism to allocate the
- * required space.
- */
-#ifdef CONFIG_DEVICE_POWER_MANAGEMENT
-#define DEVICE_COUNT \
-	((__device_end - __device_start) / _DEVICE_STRUCT_SIZEOF)
-#define DEV_BUSY_SZ	(((DEVICE_COUNT + 31) / 32) * 4)
-#define DEVICE_BUSY_BITFIELD()			\
-		FILL(0x00) ;			\
-		__device_busy_start = .;	\
-		. = . + DEV_BUSY_SZ;		\
-		__device_busy_end = .;
-#else
-#define DEVICE_BUSY_BITFIELD()
 #endif
 
 	SECTION_DATA_PROLOGUE(devices,,)
@@ -44,7 +26,6 @@
 		CREATE_OBJ_LEVEL(device, APPLICATION)
 		CREATE_OBJ_LEVEL(device, SMP)
 		__device_end = .;
-		DEVICE_BUSY_BITFIELD()
 	} GROUP_DATA_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
 
 	SECTION_DATA_PROLOGUE(initshell,,)
@@ -81,17 +62,18 @@
 	_static_kernel_objects_begin = .;
 #endif /* CONFIG_USERSPACE */
 
-	Z_ITERABLE_SECTION_RAM(k_timer, 4)
-	Z_ITERABLE_SECTION_RAM(k_mem_slab, 4)
-	Z_ITERABLE_SECTION_RAM(k_mem_pool, 4)
-	Z_ITERABLE_SECTION_RAM(k_heap, 4)
-	Z_ITERABLE_SECTION_RAM(k_mutex, 4)
-	Z_ITERABLE_SECTION_RAM(k_stack, 4)
-	Z_ITERABLE_SECTION_RAM(k_msgq, 4)
-	Z_ITERABLE_SECTION_RAM(k_mbox, 4)
-	Z_ITERABLE_SECTION_RAM(k_pipe, 4)
-	Z_ITERABLE_SECTION_RAM(k_sem, 4)
-	Z_ITERABLE_SECTION_RAM(k_queue, 4)
+	Z_ITERABLE_SECTION_RAM_GC_ALLOWED(k_timer, 4)
+	Z_ITERABLE_SECTION_RAM_GC_ALLOWED(k_mem_slab, 4)
+	Z_ITERABLE_SECTION_RAM_GC_ALLOWED(k_mem_pool, 4)
+	Z_ITERABLE_SECTION_RAM_GC_ALLOWED(k_heap, 4)
+	Z_ITERABLE_SECTION_RAM_GC_ALLOWED(k_mutex, 4)
+	Z_ITERABLE_SECTION_RAM_GC_ALLOWED(k_stack, 4)
+	Z_ITERABLE_SECTION_RAM_GC_ALLOWED(k_msgq, 4)
+	Z_ITERABLE_SECTION_RAM_GC_ALLOWED(k_mbox, 4)
+	Z_ITERABLE_SECTION_RAM_GC_ALLOWED(k_pipe, 4)
+	Z_ITERABLE_SECTION_RAM_GC_ALLOWED(k_sem, 4)
+	Z_ITERABLE_SECTION_RAM_GC_ALLOWED(k_queue, 4)
+	Z_ITERABLE_SECTION_RAM_GC_ALLOWED(k_condvar, 4)
 
 	SECTION_DATA_PROLOGUE(_net_buf_pool_area,,SUBALIGN(4))
 	{
@@ -99,29 +81,11 @@
 		KEEP(*(SORT_BY_NAME("._net_buf_pool.static.*")))
 	} GROUP_DATA_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
 
-	SECTION_DATA_PROLOGUE(net_if,,SUBALIGN(4))
-	{
-		__net_if_start = .;
-		*(".net_if.*")
-		KEEP(*(SORT_BY_NAME(".net_if.*")))
-		__net_if_end = .;
-	} GROUP_DATA_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
-
-	SECTION_DATA_PROLOGUE(net_if_dev,,SUBALIGN(4))
-	{
-		__net_if_dev_start = .;
-		*(".net_if_dev.*")
-		KEEP(*(SORT_BY_NAME(".net_if_dev.*")))
-		__net_if_dev_end = .;
-	} GROUP_DATA_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
-
-	SECTION_DATA_PROLOGUE(net_l2_data,,SUBALIGN(4))
-	{
-		__net_l2_data_start = .;
-		*(".net_l2.data")
-		KEEP(*(SORT_BY_NAME(".net_l2.data*")))
-		__net_l2_data_end = .;
-	} GROUP_DATA_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
+#if defined(CONFIG_NETWORKING)
+	Z_ITERABLE_SECTION_RAM(net_if, 4)
+	Z_ITERABLE_SECTION_RAM(net_if_dev, 4)
+	Z_ITERABLE_SECTION_RAM(net_l2, 4)
+#endif /* NETWORKING */
 
 #if defined(CONFIG_UART_MUX)
 	SECTION_DATA_PROLOGUE(uart_mux,,SUBALIGN(4))

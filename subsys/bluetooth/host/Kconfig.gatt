@@ -24,19 +24,9 @@ config BT_ATT_PREPARE_COUNT
 	  Number of buffers available for ATT prepare write, setting
 	  this to 0 disables GATT long/reliable writes.
 
-config BT_ATT_TX_MAX
-	int "Maximum number of queued outgoing ATT PDUs"
-	default BT_L2CAP_TX_BUF_COUNT
-	range 1 BT_L2CAP_TX_BUF_COUNT
-	help
-	  Number of ATT PDUs that can be at a single moment queued for
-	  transmission. If the application tries to send more than this
-	  amount the calls will block until an existing queued PDU gets
-	  sent.
-
 config BT_EATT
 	bool "Enhanced ATT Bearers support [EXPERIMENTAL]"
-	depends on BT_L2CAP_DYNAMIC_CHANNEL
+	depends on BT_L2CAP_ECRED
 	help
 	  This option enables support for Enhanced ATT bearers support. When
 	  enabled additional L2CAP channels can be connected as bearers enabling
@@ -136,6 +126,13 @@ config BT_GATT_READ_MULTIPLE
 	help
 	  This option enables support for the GATT Read Multiple Characteristic
 	  Values procedure.
+
+config BT_GATT_AUTO_DISCOVER_CCC
+	bool "Support to automatic discover the CCC handles of characteristics"
+	depends on BT_GATT_CLIENT
+	help
+	  This option enables support for GATT to initiate discovery for CCC
+	  handles if the CCC handle is unknown by the application.
 
 config BT_GAP_AUTO_UPDATE_CONN_PARAMS
 	bool "Automatic Update of Connection Parameters"

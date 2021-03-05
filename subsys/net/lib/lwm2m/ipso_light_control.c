@@ -171,7 +171,7 @@ static struct lwm2m_engine_obj_inst *light_control_create(uint16_t obj_inst_id)
 	INIT_OBJ_RES_DATA(LIGHT_DIMMER_ID, res[avail], i, res_inst[avail], j,
 			  &dimmer_value[avail], sizeof(*dimmer_value));
 	INIT_OBJ_RES(LIGHT_ON_TIME_ID, res[avail], i,
-		     res_inst[avail], j, 1, true,
+		     res_inst[avail], j, 1, false, true,
 		     &on_time_value[avail], sizeof(*on_time_value),
 		     on_time_read_cb, NULL, on_time_post_write_cb, NULL);
 	INIT_OBJ_RES_DATA(LIGHT_CUMULATIVE_ACTIVE_POWER_ID, res[avail], i,
@@ -199,7 +199,7 @@ static struct lwm2m_engine_obj_inst *light_control_create(uint16_t obj_inst_id)
 	return &inst[avail];
 }
 
-static int ipso_light_control_init(struct device *dev)
+static int ipso_light_control_init(const struct device *dev)
 {
 	light_control.obj_id = IPSO_OBJECT_LIGHT_CONTROL_ID;
 	light_control.fields = fields;

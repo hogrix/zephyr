@@ -8,6 +8,7 @@
 
 #define DT_DRV_COMPAT nxp_imx_usdhc
 
+#include <sys/__assert.h>
 #include <disk/disk_access.h>
 #include <drivers/gpio.h>
 #include <sys/byteorder.h>
@@ -377,7 +378,7 @@ enum usdhc_endian_mode {
 
 struct usdhc_config {
 	USDHC_Type *base;
-	char *clock_name;
+	const struct device *clock_dev;
 	clock_control_subsys_t clock_subsys;
 	uint8_t nusdhc;
 
@@ -453,14 +454,13 @@ struct usdhc_priv {
 	bool host_ready;
 	uint8_t status;
 
-	struct device *pwr_gpio;
-	struct device *detect_gpio;
+	const struct device *pwr_gpio;
+	const struct device *detect_gpio;
 	struct gpio_callback detect_cb;
 
 	enum host_detect_type detect_type;
 	bool inserted;
 
-	struct device *clock_dev;
 	uint32_t src_clk_hz;
 
 	const struct usdhc_config *config;
@@ -1783,8 +1783,8 @@ uint32_t usdhc_set_sd_clk(USDHC_Type *base, uint32_t src_clk_hz, uint32_t sd_clk
 	uint32_t sysctl = 0U;
 	uint32_t nearest_freq = 0U;
 
-	assert(src_clk_hz != 0U);
-	assert((sd_clk_hz != 0U) && (sd_clk_hz <= src_clk_hz));
+	__ASSERT_NO_MSG(src_clk_hz != 0U);
+	__ASSERT_NO_MSG((sd_clk_hz != 0U) && (sd_clk_hz <= src_clk_hz));
 
 	/* calculate total divisor first */
 	total_div = src_clk_hz / sd_clk_hz;
@@ -2175,12 +2175,12 @@ static void usdhc_host_hw_init(USDHC_Type *base,
 	uint32_t proctl, sysctl, wml;
 	uint32_t int_mask;
 
-	assert(config);
-	assert((config->write_watermark >= 1U) &&
-		(config->write_watermark <= 128U));
-	assert((config->read_watermark >= 1U) &&
-		(config->read_watermark <= 128U));
-	assert(config->write_burst_len <= 16U);
+	__ASSERT_NO_MSG(config);
+	__ASSERT_NO_MSG((config->write_watermark >= 1U) &&
+			(config->write_watermark <= 128U));
+	__ASSERT_NO_MSG((config->read_watermark >= 1U) &&
+			(config->read_watermark <= 128U));
+	__ASSERT_NO_MSG(config->write_burst_len <= 16U);
 
 	/* Reset USDHC. */
 	usdhc_hw_reset(base, USDHC_RESET_ALL, 100U);
@@ -2223,7 +2223,7 @@ static void usdhc_host_hw_init(USDHC_Type *base,
 
 }
 
-static void usdhc_cd_gpio_cb(struct device *dev,
+static void usdhc_cd_gpio_cb(const struct device *dev,
 				  struct gpio_callback *cb, uint32_t pins)
 {
 	struct usdhc_priv *priv =
@@ -2233,9 +2233,9 @@ static void usdhc_cd_gpio_cb(struct device *dev,
 	gpio_pin_interrupt_configure(dev, config->detect_pin, GPIO_INT_DISABLE);
 }
 
-static int usdhc_cd_gpio_init(struct device *detect_gpio,
-	uint32_t pin, gpio_dt_flags_t flags,
-	struct gpio_callback *callback)
+static int usdhc_cd_gpio_init(const struct device *detect_gpio,
+			      uint32_t pin, gpio_dt_flags_t flags,
+			      struct gpio_callback *callback)
 {
 	int ret;
 
@@ -2658,8 +2658,8 @@ static int usdhc_board_access_init(struct usdhc_priv *priv)
 
 static int usdhc_access_init(const struct device *dev)
 {
-	const struct usdhc_config *config = dev->config_info;
-	struct usdhc_priv *priv = dev->driver_data;
+	const struct usdhc_config *config = dev->config;
+	struct usdhc_priv *priv = dev->data;
 	int ret;
 
 	(void)k_mutex_lock(&z_usdhc_init_lock, K_FOREVER);
@@ -2667,18 +2667,13 @@ static int usdhc_access_init(const struct device *dev)
 	memset((char *)priv, 0, sizeof(struct usdhc_priv));
 	priv->config = config;
 
-	priv->clock_dev = device_get_binding(config->clock_name);
-	if (priv->clock_dev == NULL) {
-		return -EINVAL;
-	}
-
 	if (!config->base) {
 		k_mutex_unlock(&z_usdhc_init_lock);
 
 		return -ENODEV;
 	}
 
-	if (clock_control_get_rate(priv->clock_dev,
+	if (clock_control_get_rate(config->clock_dev,
 				   config->clock_subsys,
 				   &priv->src_clk_hz)) {
 		return -EINVAL;
@@ -2708,8 +2703,8 @@ static int usdhc_access_init(const struct device *dev)
 
 static int disk_usdhc_access_status(struct disk_info *disk)
 {
-	struct device *dev = disk->dev;
-	struct usdhc_priv *priv = dev->driver_data;
+	const struct device *dev = disk->dev;
+	struct usdhc_priv *priv = dev->data;
 
 	return priv->status;
 }
@@ -2717,8 +2712,8 @@ static int disk_usdhc_access_status(struct disk_info *disk)
 static int disk_usdhc_access_read(struct disk_info *disk, uint8_t *buf,
 				 uint32_t sector, uint32_t count)
 {
-	struct device *dev = disk->dev;
-	struct usdhc_priv *priv = dev->driver_data;
+	const struct device *dev = disk->dev;
+	struct usdhc_priv *priv = dev->data;
 
 	LOG_DBG("sector=%u count=%u", sector, count);
 
@@ -2728,8 +2723,8 @@ static int disk_usdhc_access_read(struct disk_info *disk, uint8_t *buf,
 static int disk_usdhc_access_write(struct disk_info *disk, const uint8_t *buf,
 				  uint32_t sector, uint32_t count)
 {
-	struct device *dev = disk->dev;
-	struct usdhc_priv *priv = dev->driver_data;
+	const struct device *dev = disk->dev;
+	struct usdhc_priv *priv = dev->data;
 
 	LOG_DBG("sector=%u count=%u", sector, count);
 
@@ -2738,8 +2733,8 @@ static int disk_usdhc_access_write(struct disk_info *disk, const uint8_t *buf,
 
 static int disk_usdhc_access_ioctl(struct disk_info *disk, uint8_t cmd, void *buf)
 {
-	struct device *dev = disk->dev;
-	struct usdhc_priv *priv = dev->driver_data;
+	const struct device *dev = disk->dev;
+	struct usdhc_priv *priv = dev->data;
 	int err;
 
 	err = sdhc_map_disk_status(priv->status);
@@ -2768,8 +2763,8 @@ static int disk_usdhc_access_ioctl(struct disk_info *disk, uint8_t cmd, void *bu
 
 static int disk_usdhc_access_init(struct disk_info *disk)
 {
-	struct device *dev = disk->dev;
-	struct usdhc_priv *priv = dev->driver_data;
+	const struct device *dev = disk->dev;
+	struct usdhc_priv *priv = dev->data;
 
 	if (priv->status == DISK_STATUS_OK) {
 		/* Called twice, don't re-init. */
@@ -2792,9 +2787,9 @@ static struct disk_info usdhc_disk = {
 	.ops = &usdhc_disk_ops,
 };
 
-static int disk_usdhc_init(struct device *dev)
+static int disk_usdhc_init(const struct device *dev)
 {
-	struct usdhc_priv *priv = dev->driver_data;
+	struct usdhc_priv *priv = dev->data;
 
 	priv->status = DISK_STATUS_UNINIT;
 
@@ -2803,19 +2798,37 @@ static int disk_usdhc_init(struct device *dev)
 	return disk_access_register(&usdhc_disk);
 }
 
+#define DISK_ACCESS_USDHC_INIT_NONE(n)
+
+#define DISK_ACCESS_USDHC_INIT_PWR_PROPS(n)				\
+	.pwr_name = DT_INST_GPIO_LABEL(n, pwr_gpios),			\
+	.pwr_pin = DT_INST_GPIO_PIN(n, pwr_gpios),			\
+	.pwr_flags = DT_INST_GPIO_FLAGS(n, pwr_gpios),
+
+#define DISK_ACCESS_USDHC_INIT_CD_PROPS(n)				\
+	.detect_name = DT_INST_GPIO_LABEL(n, cd_gpios),			\
+	.detect_pin = DT_INST_GPIO_PIN(n, cd_gpios),			\
+	.detect_flags = DT_INST_GPIO_FLAGS(n, cd_gpios),
+
+#define DISK_ACCESS_USDHC_INIT_PWR(n)					\
+	COND_CODE_1(DT_INST_NODE_HAS_PROP(n, pwr_gpios),		\
+		    (DISK_ACCESS_USDHC_INIT_PWR_PROPS(n)),		\
+		    (DISK_ACCESS_USDHC_INIT_NONE(n)))
+
+#define DISK_ACCESS_USDHC_INIT_CD(n)					\
+	COND_CODE_1(DT_INST_NODE_HAS_PROP(n, cd_gpios),			\
+		    (DISK_ACCESS_USDHC_INIT_CD_PROPS(n)),		\
+		    (DISK_ACCESS_USDHC_INIT_NONE(n)))
+
 #define DISK_ACCESS_USDHC_INIT(n)					\
 	static const struct usdhc_config usdhc_config_##n = {		\
 		.base = (USDHC_Type  *) DT_INST_REG_ADDR(n),		\
-		.clock_name = DT_INST_CLOCKS_LABEL(n),			\
+		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(n)),	\
 		.clock_subsys =						\
 		(clock_control_subsys_t)DT_INST_CLOCKS_CELL(n, name),	\
 		.nusdhc = n,						\
-		.pwr_name = DT_INST_GPIO_LABEL(n, pwr_gpios),		\
-		.pwr_pin = DT_INST_GPIO_PIN(n, pwr_gpios),		\
-		.pwr_flags = DT_INST_GPIO_FLAGS(n, pwr_gpios),		\
-		.detect_name = DT_INST_GPIO_LABEL(n, cd_gpios),		\
-		.detect_pin = DT_INST_GPIO_PIN(n, cd_gpios),		\
-		.detect_flags = DT_INST_GPIO_FLAGS(n, cd_gpios),	\
+		DISK_ACCESS_USDHC_INIT_PWR(n)				\
+		DISK_ACCESS_USDHC_INIT_CD(n)				\
 		.data_timeout = USDHC_DATA_TIMEOUT,			\
 		.endian = USDHC_LITTLE_ENDIAN,				\
 		.read_watermark = USDHC_READ_WATERMARK_LEVEL,		\
@@ -2826,9 +2839,9 @@ static int disk_usdhc_init(struct device *dev)
 									\
 	static struct usdhc_priv usdhc_priv_##n;			\
 									\
-	DEVICE_AND_API_INIT(usdhc_dev##n,				\
-			    DT_INST_LABEL(n),				\
+	DEVICE_DT_INST_DEFINE(n,					\
 			    &disk_usdhc_init,				\
+			    device_pm_control_nop,			\
 			    &usdhc_priv_##n,				\
 			    &usdhc_config_##n,				\
 			    APPLICATION,				\

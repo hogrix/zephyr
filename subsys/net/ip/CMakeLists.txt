@@ -9,6 +9,7 @@ zephyr_library_compile_definitions_ifdef(
 zephyr_library_sources(
   net_core.c
   net_if.c
+  net_timeout.c
   utils.c
   )
 
@@ -46,7 +47,7 @@ endif()
 
 zephyr_library_include_directories(
   ${ZEPHYR_BASE}/kernel/include
-  ${ZEPHYR_BASE}/arch/${ARCH}/include
+  ${ARCH_DIR}/${ARCH}/include
   )
 
 if(CONFIG_NET_SHELL)

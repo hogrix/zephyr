@@ -41,7 +41,6 @@
 #define FLASH_SIMULATOR_PROG_UNIT DT_PROP(SOC_NV_FLASH_NODE, write_block_size)
 #define FLASH_SIMULATOR_FLASH_SIZE DT_REG_SIZE(SOC_NV_FLASH_NODE)
 
-#define FLASH_SIMULATOR_DEV_NAME DT_INST_LABEL(0)
 #define FLASH_SIMULATOR_ERASE_VALUE \
 		DT_PROP(DT_PARENT(SOC_NV_FLASH_NODE), erase_value)
 
@@ -146,7 +145,8 @@ static const struct flash_parameters flash_sim_parameters = {
 	.erase_value = FLASH_SIMULATOR_ERASE_VALUE
 };
 
-static int flash_range_is_valid(struct device *dev, off_t offset, size_t len)
+static int flash_range_is_valid(const struct device *dev, off_t offset,
+				size_t len)
 {
 	ARG_UNUSED(dev);
 	if ((offset + len > FLASH_SIMULATOR_FLASH_SIZE +
@@ -158,7 +158,7 @@ static int flash_range_is_valid(struct device *dev, off_t offset, size_t len)
 	return 1;
 }
 
-static int flash_wp_set(struct device *dev, bool enable)
+static int flash_wp_set(const struct device *dev, bool enable)
 {
 	ARG_UNUSED(dev);
 	write_protection = enable;
@@ -171,7 +171,8 @@ static bool flash_wp_is_set(void)
 	return write_protection;
 }
 
-static int flash_sim_read(struct device *dev, const off_t offset, void *data,
+static int flash_sim_read(const struct device *dev, const off_t offset,
+			  void *data,
 			  const size_t len)
 {
 	ARG_UNUSED(dev);
@@ -201,7 +202,7 @@ static int flash_sim_read(struct device *dev, const off_t offset, void *data,
 	return 0;
 }
 
-static int flash_sim_write(struct device *dev, const off_t offset,
+static int flash_sim_write(const struct device *dev, const off_t offset,
 			   const void *data, const size_t len)
 {
 	uint8_t buf[FLASH_SIMULATOR_PROG_UNIT];
@@ -286,7 +287,7 @@ static void unit_erase(const uint32_t unit)
 	       FLASH_SIMULATOR_ERASE_UNIT);
 }
 
-static int flash_sim_erase(struct device *dev, const off_t offset,
+static int flash_sim_erase(const struct device *dev, const off_t offset,
 			   const size_t len)
 {
 	ARG_UNUSED(dev);
@@ -340,7 +341,7 @@ static const struct flash_pages_layout flash_sim_pages_layout = {
 	.pages_size = FLASH_SIMULATOR_ERASE_UNIT,
 };
 
-static void flash_sim_page_layout(struct device *dev,
+static void flash_sim_page_layout(const struct device *dev,
 				  const struct flash_pages_layout **layout,
 				  size_t *layout_size)
 {
@@ -370,7 +371,7 @@ static const struct flash_driver_api flash_sim_api = {
 
 #ifdef CONFIG_ARCH_POSIX
 
-static int flash_mock_init(struct device *dev)
+static int flash_mock_init(const struct device *dev)
 {
 	struct stat f_stat;
 	int rc;
@@ -422,7 +423,7 @@ static int flash_mock_init(struct device *dev)
 
 #else
 
-static int flash_mock_init(struct device *dev)
+static int flash_mock_init(const struct device *dev)
 {
 	memset(mock_flash, FLASH_SIMULATOR_ERASE_VALUE, ARRAY_SIZE(mock_flash));
 	return 0;
@@ -430,7 +431,7 @@ static int flash_mock_init(struct device *dev)
 
 #endif /* CONFIG_ARCH_POSIX */
 
-static int flash_init(struct device *dev)
+static int flash_init(const struct device *dev)
 {
 	STATS_INIT_AND_REG(flash_sim_stats, STATS_SIZE_32, "flash_sim_stats");
 	STATS_INIT_AND_REG(flash_sim_thresholds, STATS_SIZE_32,
@@ -438,7 +439,7 @@ static int flash_init(struct device *dev)
 	return flash_mock_init(dev);
 }
 
-DEVICE_AND_API_INIT(flash_simulator, FLASH_SIMULATOR_DEV_NAME, flash_init,
+DEVICE_DT_INST_DEFINE(0, flash_init, device_pm_control_nop,
 		    NULL, NULL, POST_KERNEL, CONFIG_KERNEL_INIT_PRIORITY_DEVICE,
 		    &flash_sim_api);
 

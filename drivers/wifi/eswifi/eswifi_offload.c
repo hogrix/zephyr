@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 #define LOG_LEVEL CONFIG_WIFI_LOG_LEVEL
-#include <logging/log.h>
-LOG_MODULE_REGISTER(wifi_eswifi_offload);
+#include "eswifi_log.h"
+LOG_MODULE_DECLARE(LOG_MODULE_NAME);
 
 #include <zephyr.h>
 #include <kernel.h>
@@ -85,6 +85,7 @@ static void eswifi_off_connect_work(struct k_work *work)
 	err = __eswifi_off_start_client(eswifi, socket);
 	if (!err) {
 		socket->state = ESWIFI_SOCKET_STATE_CONNECTED;
+		net_context_set_state(socket->context, NET_CONTEXT_CONNECTED);
 	} else {
 		socket->state = ESWIFI_SOCKET_STATE_NONE;
 	}

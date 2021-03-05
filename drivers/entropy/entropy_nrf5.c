@@ -98,7 +98,7 @@ struct entropy_nrf5_dev_data {
 static struct entropy_nrf5_dev_data entropy_nrf5_data;
 
 #define DEV_DATA(dev) \
-	((struct entropy_nrf5_dev_data *)(dev)->driver_data)
+	((struct entropy_nrf5_dev_data *)(dev)->data)
 
 static int random_byte_get(void)
 {
@@ -204,7 +204,7 @@ static void rng_pool_init(struct rng_pool *rngp, uint16_t size, uint8_t threshol
 	rngp->threshold	  = threshold;
 }
 
-static void isr(void *arg)
+static void isr(const void *arg)
 {
 	int byte, ret;
 
@@ -227,7 +227,8 @@ static void isr(void *arg)
 	}
 }
 
-static int entropy_nrf5_get_entropy(struct device *device, uint8_t *buf, uint16_t len)
+static int entropy_nrf5_get_entropy(const struct device *device, uint8_t *buf,
+				    uint16_t len)
 {
 	/* Check if this API is called on correct driver instance. */
 	__ASSERT_NO_MSG(&entropy_nrf5_data == DEV_DATA(device));
@@ -253,7 +254,8 @@ static int entropy_nrf5_get_entropy(struct device *device, uint8_t *buf, uint16_
 	return 0;
 }
 
-static int entropy_nrf5_get_entropy_isr(struct device *dev, uint8_t *buf, uint16_t len,
+static int entropy_nrf5_get_entropy_isr(const struct device *dev,
+					uint8_t *buf, uint16_t len,
 					uint32_t flags)
 {
 	uint16_t cnt = len;
@@ -322,19 +324,20 @@ static int entropy_nrf5_get_entropy_isr(struct device *dev, uint8_t *buf, uint16
 	return cnt;
 }
 
-static int entropy_nrf5_init(struct device *device);
+static int entropy_nrf5_init(const struct device *device);
 
 static const struct entropy_driver_api entropy_nrf5_api_funcs = {
 	.get_entropy = entropy_nrf5_get_entropy,
 	.get_entropy_isr = entropy_nrf5_get_entropy_isr
 };
 
-DEVICE_AND_API_INIT(entropy_nrf5, DT_INST_LABEL(0),
-		    entropy_nrf5_init, &entropy_nrf5_data, NULL,
+DEVICE_DT_INST_DEFINE(0,
+		    entropy_nrf5_init, device_pm_control_nop,
+		    &entropy_nrf5_data, NULL,
 		    PRE_KERNEL_1, CONFIG_KERNEL_INIT_PRIORITY_DEVICE,
 		    &entropy_nrf5_api_funcs);
 
-static int entropy_nrf5_init(struct device *device)
+static int entropy_nrf5_init(const struct device *device)
 {
 	/* Check if this API is called on correct driver instance. */
 	__ASSERT_NO_MSG(&entropy_nrf5_data == DEV_DATA(device));

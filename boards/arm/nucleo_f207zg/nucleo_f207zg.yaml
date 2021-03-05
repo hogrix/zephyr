@@ -15,3 +15,5 @@ supported:
   - watchdog
   - counter
   - adc
+  - dac
+  - backup_sram

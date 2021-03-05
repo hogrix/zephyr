@@ -39,7 +39,7 @@ NET_BUF_POOL_VAR_DEFINE(isotp_tx_pool, CONFIG_ISOTP_TX_BUF_COUNT,
 			CONFIG_ISOTP_BUF_TX_DATA_POOL_SIZE, NULL);
 #endif
 
-K_THREAD_STACK_DEFINE(tx_stack, CONFIG_ISOTP_WORKQ_STACK_SIZE);
+K_KERNEL_STACK_DEFINE(tx_stack, CONFIG_ISOTP_WORKQ_STACK_SIZE);
 static struct k_work_q isotp_workq;
 
 static void receive_state_machine(struct isotp_recv_ctx *ctx);
@@ -133,7 +133,7 @@ static void receive_send_fc(struct isotp_recv_ctx *ctx, uint8_t fs)
 	struct zcan_frame frame = {
 		.id_type = ctx->tx_addr.id_type,
 		.rtr = CAN_DATAFRAME,
-		.ext_id = ctx->tx_addr.ext_id
+		.id = ctx->tx_addr.ext_id
 	};
 	uint8_t *data = frame.data;
 	int ret;
@@ -298,7 +298,7 @@ static void receive_state_machine(struct isotp_recv_ctx *ctx)
 
 		ctx->wft = ISOTP_WFT_FIRST;
 		ctx->state = ISOTP_RX_STATE_TRY_ALLOC;
-		/* FALLTHROUGH */
+		__fallthrough;
 	case ISOTP_RX_STATE_TRY_ALLOC:
 		LOG_DBG("SM try to allocate");
 		z_abort_timeout(&ctx->timeout);
@@ -309,7 +309,7 @@ static void receive_state_machine(struct isotp_recv_ctx *ctx)
 		}
 
 		ctx->state = ISOTP_RX_STATE_SEND_FC;
-		/* FALLTHROUGH */
+		__fallthrough;
 	case ISOTP_RX_STATE_SEND_FC:
 		LOG_DBG("SM send CTS FC frame");
 		receive_send_fc(ctx, ISOTP_PCI_FS_CTS);
@@ -333,7 +333,7 @@ static void receive_state_machine(struct isotp_recv_ctx *ctx)
 		LOG_ERR("Sent %d wait frames. Giving up to alloc now",
 			ctx->wft);
 		receive_report_error(ctx, ISOTP_N_BUFFER_OVERFLW);
-		/* FALLTHROUGH */
+		__fallthrough;
 	case ISOTP_RX_STATE_ERR:
 		LOG_DBG("SM ERR state. err nr: %d", ctx->error_nr);
 		z_abort_timeout(&ctx->timeout);
@@ -346,7 +346,7 @@ static void receive_state_machine(struct isotp_recv_ctx *ctx)
 		net_buf_unref(ctx->buf);
 		ctx->buf = NULL;
 		ctx->state = ISOTP_RX_STATE_RECYCLE;
-		/* FALLTHROUGH */
+		__fallthrough;
 	case ISOTP_RX_STATE_RECYCLE:
 		LOG_DBG("SM recycle context for next message");
 		ctx->buf = net_buf_alloc_fixed(&isotp_rx_sf_ff_pool, K_NO_WAIT);
@@ -360,7 +360,7 @@ static void receive_state_machine(struct isotp_recv_ctx *ctx)
 		sys_slist_find_and_remove(&global_ctx.ff_sf_alloc_list,
 					  &ctx->alloc_node);
 		ctx->state = ISOTP_RX_STATE_WAIT_FF_SF;
-		/* FALLTHROUGH */
+		__fallthrough;
 	case ISOTP_RX_STATE_UNBOUND:
 		break;
 
@@ -532,9 +532,9 @@ static inline int attach_ff_filter(struct isotp_recv_ctx *ctx)
 	struct zcan_filter filter = {
 		.id_type = ctx->rx_addr.id_type,
 		.rtr = CAN_DATAFRAME,
-		.ext_id = ctx->rx_addr.ext_id,
+		.id = ctx->rx_addr.ext_id,
 		.rtr_mask = 1,
-		.ext_id_mask = CAN_EXT_ID_MASK
+		.id_mask = CAN_EXT_ID_MASK
 	};
 
 	ctx->filter_id = can_attach_isr(ctx->can_dev, receive_can_rx_isr, ctx,
@@ -547,7 +547,7 @@ static inline int attach_ff_filter(struct isotp_recv_ctx *ctx)
 	return 0;
 }
 
-int isotp_bind(struct isotp_recv_ctx *ctx, struct device *can_dev,
+int isotp_bind(struct isotp_recv_ctx *ctx, const struct device *can_dev,
 	       const struct isotp_msg_id *rx_addr,
 	       const struct isotp_msg_id *tx_addr,
 	       const struct isotp_fc_opts *opts,
@@ -834,7 +834,7 @@ static inline int send_sf(struct isotp_send_ctx *ctx)
 	struct zcan_frame frame = {
 		.id_type = ctx->tx_addr.id_type,
 		.rtr = CAN_DATAFRAME,
-		.ext_id = ctx->tx_addr.ext_id
+		.id = ctx->tx_addr.ext_id
 	};
 	size_t len = get_ctx_data_length(ctx);
 	int index = 0;
@@ -866,7 +866,7 @@ static inline int send_ff(struct isotp_send_ctx *ctx)
 	struct zcan_frame frame = {
 		.id_type = ctx->tx_addr.id_type,
 		.rtr = CAN_DATAFRAME,
-		.ext_id = ctx->tx_addr.ext_id,
+		.id = ctx->tx_addr.ext_id,
 		.dlc = ISOTP_CAN_DL
 	};
 	int index = 0;
@@ -908,7 +908,7 @@ static inline int send_cf(struct isotp_send_ctx *ctx)
 	struct zcan_frame frame = {
 		.id_type = ctx->tx_addr.id_type,
 		.rtr = CAN_DATAFRAME,
-		.ext_id = ctx->tx_addr.ext_id,
+		.id = ctx->tx_addr.ext_id,
 	};
 	int index = 0;
 	int ret;
@@ -1044,7 +1044,7 @@ static void send_state_machine(struct isotp_send_ctx *ctx)
 
 	case ISOTP_TX_ERR:
 		LOG_DBG("SM error");
-		/* FALLTHROUGH */
+		__fallthrough;
 	case ISOTP_TX_WAIT_FIN:
 		if (ctx->filter_id >= 0) {
 			can_detach(ctx->can_dev, ctx->filter_id);
@@ -1081,9 +1081,9 @@ static inline int attach_fc_filter(struct isotp_send_ctx *ctx)
 	struct zcan_filter filter = {
 		.id_type = ctx->rx_addr.id_type,
 		.rtr = CAN_DATAFRAME,
-		.ext_id = ctx->rx_addr.ext_id,
+		.id = ctx->rx_addr.ext_id,
 		.rtr_mask = 1,
-		.ext_id_mask = CAN_EXT_ID_MASK
+		.id_mask = CAN_EXT_ID_MASK
 	};
 
 	ctx->filter_id = can_attach_isr(ctx->can_dev, send_can_rx_isr, ctx,
@@ -1096,7 +1096,7 @@ static inline int attach_fc_filter(struct isotp_send_ctx *ctx)
 	return 0;
 }
 
-static int send(struct isotp_send_ctx *ctx, struct device *can_dev,
+static int send(struct isotp_send_ctx *ctx, const struct device *can_dev,
 		const struct isotp_msg_id *tx_addr,
 		const struct isotp_msg_id *rx_addr,
 		isotp_tx_callback_t complete_cb, void *cb_arg)
@@ -1159,7 +1159,7 @@ static int send(struct isotp_send_ctx *ctx, struct device *can_dev,
 	return ISOTP_N_OK;
 }
 
-int isotp_send(struct isotp_send_ctx *ctx, struct device *can_dev,
+int isotp_send(struct isotp_send_ctx *ctx, const struct device *can_dev,
 	       const uint8_t *data, size_t len,
 	       const struct isotp_msg_id *tx_addr,
 	       const struct isotp_msg_id *rx_addr,
@@ -1175,7 +1175,7 @@ int isotp_send(struct isotp_send_ctx *ctx, struct device *can_dev,
 
 #ifdef CONFIG_ISOTP_ENABLE_CONTEXT_BUFFERS
 
-int isotp_send_ctx_buf(struct device *can_dev,
+int isotp_send_ctx_buf(const struct device *can_dev,
 		       const uint8_t *data, size_t len,
 		       const struct isotp_msg_id *tx_addr,
 		       const struct isotp_msg_id *rx_addr,
@@ -1199,7 +1199,7 @@ int isotp_send_ctx_buf(struct device *can_dev,
 	return send(ctx, can_dev, tx_addr, rx_addr, complete_cb, cb_arg);
 }
 
-int isotp_send_net_ctx_buf(struct device *can_dev,
+int isotp_send_net_ctx_buf(const struct device *can_dev,
 			   struct net_buf *data,
 			   const struct isotp_msg_id *tx_addr,
 			   const struct isotp_msg_id *rx_addr,
@@ -1223,7 +1223,7 @@ int isotp_send_net_ctx_buf(struct device *can_dev,
 }
 
 #ifdef CONFIG_ISOTP_USE_TX_BUF
-int isotp_send_buf(struct device *can_dev,
+int isotp_send_buf(const struct device *can_dev,
 		   const uint8_t *data, size_t len,
 		   const struct isotp_msg_id *tx_addr,
 		   const struct isotp_msg_id *rx_addr,
@@ -1257,13 +1257,13 @@ int isotp_send_buf(struct device *can_dev,
 #endif  /*CONFIG_ISOTP_USE_TX_BUF*/
 #endif  /*CONFIG_ISOTP_ENABLE_CONTEXT_BUFFERS*/
 
-static int isotp_workq_init(struct device *dev)
+static int isotp_workq_init(const struct device *dev)
 {
 	ARG_UNUSED(dev);
 	LOG_DBG("Starting workqueue");
 	k_work_q_start(&isotp_workq,
 		       tx_stack,
-		       K_THREAD_STACK_SIZEOF(tx_stack),
+		       K_KERNEL_STACK_SIZEOF(tx_stack),
 		       CONFIG_ISOTP_WORKQUEUE_PRIO);
 	k_thread_name_set(&isotp_workq.thread, "isotp_work");
 

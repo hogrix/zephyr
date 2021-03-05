@@ -160,22 +160,6 @@ struct net_if_router {
 	uint8_t _unused : 5;
 };
 
-/*
- * Special alignment is needed for net_if which is stored in
- * a net_if linker section if there are more than one network
- * interface in the system. If there is only one network interface,
- * then this alignment is not needed, unfortunately this cannot be
- * known beforehand.
- *
- * The net_if struct needs to be aligned to 32 byte boundary,
- * otherwise the __net_if_end will point to wrong location and net_if
- * initialization done in net_if_init() will not find proper values
- * for the second interface.
- *
- * So this alignment is a workaround and should eventually be removed.
- */
-#define __net_if_align __aligned(32)
-
 enum net_if_flag {
 	/** Interface is up/ready to receive and transmit */
 	NET_IF_UP,
@@ -196,6 +180,12 @@ enum net_if_flag {
 
 	/** Power management specific: interface is being suspended */
 	NET_IF_SUSPENDED,
+
+	/** Flag defines if received multicasts of other interface are
+	 * forwarded on this interface. This activates multicast
+	 * routing / forwarding for this interface.
+	 */
+	NET_IF_FORWARD_MULTICASTS,
 
 /** @cond INTERNAL_HIDDEN */
 	/* Total number of flags - must be at the end of the enum */
@@ -402,9 +392,6 @@ struct net_traffic_class {
 
 	/** Stack for this work queue */
 	k_thread_stack_t *stack;
-
-	/** Traffic class value */
-	int tc;
 };
 
 /**
@@ -422,7 +409,7 @@ struct net_traffic_class {
  */
 struct net_if_dev {
 	/** The actually device driver instance the net_if is related to */
-	struct device *dev;
+	const struct device *dev;
 
 	/** Interface's L2 layer */
 	const struct net_l2 * const l2;
@@ -480,7 +467,7 @@ struct net_if {
 	 */
 	int tx_pending;
 #endif
-} __net_if_align;
+};
 
 /**
  * @brief Set a value in network interface flags
@@ -597,7 +584,7 @@ static inline void *net_if_l2_data(struct net_if *iface)
  *
  * @return a pointer to the device driver instance
  */
-static inline struct device *net_if_get_device(struct net_if *iface)
+static inline const struct device *net_if_get_device(struct net_if *iface)
 {
 	return iface->if_dev->dev;
 }
@@ -726,8 +713,8 @@ static inline void net_if_stop_rs(struct net_if *iface)
  * @brief Set a network interface's link address
  *
  * @param iface Pointer to a network interface structure
- * @param addr A pointer to a uint8_t buffer representing the address. The buffer
- *             must remain valid throughout interface lifetime.
+ * @param addr A pointer to a uint8_t buffer representing the address.
+ *             The buffer must remain valid throughout interface lifetime.
  * @param len length of the address buffer
  * @param type network bearer type of this link address
  *
@@ -802,7 +789,7 @@ struct net_if *net_if_get_by_link_addr(struct net_linkaddr *ll_addr);
  *
  * @return a valid struct net_if pointer on success, NULL otherwise
  */
-struct net_if *net_if_lookup_by_dev(struct device *dev);
+struct net_if *net_if_lookup_by_dev(const struct device *dev);
 
 /**
  * @brief Get network interface IP config
@@ -1012,10 +999,10 @@ struct net_if_mcast_addr *net_if_ipv6_maddr_lookup(const struct in6_addr *addr,
  * @brief Define callback that is called whenever IPv6 multicast address group
  * is joined or left.
 
- * @param "struct net_if *iface" A pointer to a struct net_if to which the
- *        multicast address is attached.
- * @param "const struct in6_addr *addr" IPv6 multicast address.
- * @param "bool is_joined" True if the address is joined, false if left.
+ * @param iface A pointer to a struct net_if to which the multicast address is
+ *        attached.
+ * @param addr IPv6 multicast address.
+ * @param is_joined True if the address is joined, false if left.
  */
 typedef void (*net_if_mcast_callback_t)(struct net_if *iface,
 					const struct in6_addr *addr,
@@ -1868,11 +1855,9 @@ struct net_if *net_if_select_src_iface(const struct sockaddr *dst);
  * @typedef net_if_link_callback_t
  * @brief Define callback that is called after a network packet
  *        has been sent.
- * @param "struct net_if *iface" A pointer to a struct net_if to which the
- *        the net_pkt was sent to.
- * @param "struct net_linkaddr *dst" Link layer address of the destination
- *        where the network packet was sent.
- * @param "int status" Send status, 0 is ok, < 0 error.
+ * @param iface A pointer to a struct net_if to which the the net_pkt was sent to.
+ * @param dst Link layer address of the destination where the network packet was sent.
+ * @param status Send status, 0 is ok, < 0 error.
  */
 typedef void (*net_if_link_callback_t)(struct net_if *iface,
 				       struct net_linkaddr *dst,
@@ -1946,11 +1931,14 @@ bool net_if_need_calc_tx_checksum(struct net_if *iface);
 /**
  * @brief Get interface according to index
  *
+ * @details This is a syscall only to provide access to the object for purposes
+ *          of assigning permissions.
+ *
  * @param index Interface index
  *
  * @return Pointer to interface or NULL if not found.
  */
-struct net_if *net_if_get_by_index(int index);
+__syscall struct net_if *net_if_get_by_index(int index);
 
 /**
  * @brief Get interface index according to pointer
@@ -2179,23 +2167,23 @@ struct net_if_api {
 		NET_IF_DHCPV4_INIT			\
 	}
 
-#define NET_IF_GET_NAME(dev_name, sfx) (__net_if_##dev_name##_##sfx)
-#define NET_IF_DEV_GET_NAME(dev_name, sfx) (__net_if_dev_##dev_name##_##sfx)
+#define NET_IF_GET_NAME(dev_name, sfx) __net_if_##dev_name##_##sfx
+#define NET_IF_DEV_GET_NAME(dev_name, sfx) __net_if_dev_##dev_name##_##sfx
 
 #define NET_IF_GET(dev_name, sfx)					\
 	((struct net_if *)&NET_IF_GET_NAME(dev_name, sfx))
 
 #define NET_IF_INIT(dev_name, sfx, _l2, _mtu, _num_configs)		\
-	static struct net_if_dev (NET_IF_DEV_GET_NAME(dev_name, sfx))	\
-	__used __attribute__((__section__(".net_if_dev.data"))) = {	\
+	static Z_STRUCT_SECTION_ITERABLE(net_if_dev,			\
+				NET_IF_DEV_GET_NAME(dev_name, sfx)) = { \
 		.dev = &(DEVICE_NAME_GET(dev_name)),			\
 		.l2 = &(NET_L2_GET_NAME(_l2)),				\
 		.l2_data = &(NET_L2_GET_DATA(dev_name, sfx)),		\
 		.mtu = _mtu,						\
 	};								\
-	static struct net_if						\
-	(NET_IF_GET_NAME(dev_name, sfx))[_num_configs] __used		\
-	__attribute__((__section__(".net_if.data"))) = {		\
+	static Z_DECL_ALIGN(struct net_if)				\
+		       NET_IF_GET_NAME(dev_name, sfx)[_num_configs]	\
+		       __used __in_section(_net_if, static, net_if) = {	\
 		[0 ... (_num_configs - 1)] = {				\
 			.if_dev = &(NET_IF_DEV_GET_NAME(dev_name, sfx)), \
 			NET_IF_CONFIG_INIT				\
@@ -2203,14 +2191,14 @@ struct net_if_api {
 	}
 
 #define NET_IF_OFFLOAD_INIT(dev_name, sfx, _mtu)			\
-	static struct net_if_dev (NET_IF_DEV_GET_NAME(dev_name, sfx)) __used \
-	__attribute__((__section__(".net_if_dev.data"))) = {		\
-		.dev = &(__device_##dev_name),				\
+	static Z_STRUCT_SECTION_ITERABLE(net_if_dev,			\
+				NET_IF_DEV_GET_NAME(dev_name, sfx)) = {	\
+		.dev = &(DEVICE_NAME_GET(dev_name)),			\
 		.mtu = _mtu,						\
 	};								\
-	static struct net_if						\
-	(NET_IF_GET_NAME(dev_name, sfx))[NET_IF_MAX_CONFIGS] __used	\
-	__attribute__((__section__(".net_if.data"))) = {		\
+	static Z_DECL_ALIGN(struct net_if)				\
+		NET_IF_GET_NAME(dev_name, sfx)[NET_IF_MAX_CONFIGS]	\
+		       __used __in_section(_net_if, static, net_if) = {	\
 		[0 ... (NET_IF_MAX_CONFIGS - 1)] = {			\
 			.if_dev = &(NET_IF_DEV_GET_NAME(dev_name, sfx)), \
 			NET_IF_CONFIG_INIT				\
@@ -2220,6 +2208,15 @@ struct net_if_api {
 /** @endcond */
 
 /* Network device initialization macros */
+
+#define Z_NET_DEVICE_INIT(node_id, dev_name, drv_name, init_fn,		\
+			pm_control_fn, data, cfg, prio, api, l2,	\
+			l2_ctx_type, mtu)				\
+	Z_DEVICE_DEFINE(node_id, dev_name, drv_name, init_fn,		\
+			pm_control_fn, data,				\
+			cfg, POST_KERNEL, prio, api);			\
+	NET_L2_DATA_INIT(dev_name, 0, l2_ctx_type);			\
+	NET_IF_INIT(dev_name, 0, l2, mtu, NET_IF_MAX_CONFIGS)
 
 /**
  * @def NET_DEVICE_INIT
@@ -2233,7 +2230,7 @@ struct net_if_api {
  * @param pm_control_fn Pointer to device_pm_control function.
  * Can be empty function (device_pm_control_nop) if not implemented.
  * @param data Pointer to the device's private data.
- * @param cfg_info The address to the structure containing the
+ * @param cfg The address to the structure containing the
  * configuration information for this instance of the driver.
  * @param prio The initialization level at which configuration occurs.
  * @param api Provides an initial pointer to the API function struct
@@ -2243,12 +2240,61 @@ struct net_if_api {
  * @param mtu Maximum transfer unit in bytes for this network interface.
  */
 #define NET_DEVICE_INIT(dev_name, drv_name, init_fn, pm_control_fn,	\
-			data, cfg_info, prio, api, l2,			\
+			data, cfg, prio, api, l2,			\
 			l2_ctx_type, mtu)				\
-	DEVICE_DEFINE(dev_name, drv_name, init_fn, pm_control_fn, data, \
-		      cfg_info, POST_KERNEL, prio, api);		\
-	NET_L2_DATA_INIT(dev_name, 0, l2_ctx_type);			\
-	NET_IF_INIT(dev_name, 0, l2, mtu, NET_IF_MAX_CONFIGS)
+	Z_NET_DEVICE_INIT(DT_INVALID_NODE, dev_name, drv_name, init_fn,	\
+			pm_control_fn, data, cfg, prio, api, l2,	\
+			l2_ctx_type, mtu)
+
+/**
+ * @def NET_DEVICE_DT_DEFINE
+ *
+ * @brief Like NET_DEVICE_INIT but taking metadata from a devicetree node.
+ * Create a network interface and bind it to network device.
+ *
+ * @param node_id The devicetree node identifier.
+ * @param init_fn Address to the init function of the driver.
+ * @param pm_control_fn Pointer to device_pm_control function.
+ * Can be empty function (device_pm_control_nop) if not implemented.
+ * @param data Pointer to the device's private data.
+ * @param cfg The address to the structure containing the
+ * configuration information for this instance of the driver.
+ * @param prio The initialization level at which configuration occurs.
+ * @param api Provides an initial pointer to the API function struct
+ * used by the driver. Can be NULL.
+ * @param l2 Network L2 layer for this network interface.
+ * @param l2_ctx_type Type of L2 context data.
+ * @param mtu Maximum transfer unit in bytes for this network interface.
+ */
+#define NET_DEVICE_DT_DEFINE(node_id, init_fn, pm_control_fn, data, cfg,	\
+			   prio, api, l2, l2_ctx_type, mtu)		\
+	Z_NET_DEVICE_INIT(node_id, Z_DEVICE_DT_DEV_NAME(node_id),	\
+			  DT_PROP_OR(node_id, label, ""), init_fn,	\
+			  pm_control_fn, data, cfg, prio, api, l2,	\
+			  l2_ctx_type, mtu)
+
+/**
+ * @def NET_DEVICE_DT_INST_DEFINE
+ *
+ * @brief Like NET_DEVICE_DT_DEFINE for an instance of a DT_DRV_COMPAT compatible
+ *
+ * @param inst instance number.  This is replaced by
+ * <tt>DT_DRV_COMPAT(inst)</tt> in the call to NET_DEVICE_DT_DEFINE.
+ *
+ * @param ... other parameters as expected by NET_DEVICE_DT_DEFINE.
+ */
+#define NET_DEVICE_DT_INST_DEFINE(inst, ...) \
+	NET_DEVICE_DT_DEFINE(DT_DRV_INST(inst), __VA_ARGS__)
+
+#define Z_NET_DEVICE_INIT_INSTANCE(node_id, dev_name, drv_name,		\
+				   instance, init_fn, pm_control_fn,	\
+				   data, cfg, prio, api, l2,		\
+				   l2_ctx_type, mtu)			\
+	Z_DEVICE_DEFINE(node_id, dev_name, drv_name, init_fn,		\
+			pm_control_fn, data, cfg, POST_KERNEL,		\
+			prio, api);					\
+	NET_L2_DATA_INIT(dev_name, instance, l2_ctx_type);		\
+	NET_IF_INIT(dev_name, instance, l2, mtu, NET_IF_MAX_CONFIGS)
 
 /**
  * @def NET_DEVICE_INIT_INSTANCE
@@ -2266,7 +2312,7 @@ struct net_if_api {
  * @param pm_control_fn Pointer to device_pm_control function.
  * Can be empty function (device_pm_control_nop) if not implemented.
  * @param data Pointer to the device's private data.
- * @param cfg_info The address to the structure containing the
+ * @param cfg The address to the structure containing the
  * configuration information for this instance of the driver.
  * @param prio The initialization level at which configuration occurs.
  * @param api Provides an initial pointer to the API function struct
@@ -2276,12 +2322,65 @@ struct net_if_api {
  * @param mtu Maximum transfer unit in bytes for this network interface.
  */
 #define NET_DEVICE_INIT_INSTANCE(dev_name, drv_name, instance, init_fn,	\
-				 pm_control_fn, data, cfg_info, prio,	\
+				 pm_control_fn, data, cfg, prio,	\
 				 api, l2, l2_ctx_type, mtu)		\
-	DEVICE_DEFINE(dev_name, drv_name, init_fn, pm_control_fn, data,	\
-		      cfg_info, POST_KERNEL, prio, api);		\
-	NET_L2_DATA_INIT(dev_name, instance, l2_ctx_type);		\
-	NET_IF_INIT(dev_name, instance, l2, mtu, NET_IF_MAX_CONFIGS)
+	Z_NET_DEVICE_INIT_INSTANCE(DT_INVALID_NODE, dev_name, drv_name,	\
+				   instance, init_fn, pm_control_fn,	\
+				   data, cfg, prio, api, l2,		\
+				   l2_ctx_type, mtu)
+
+/**
+ * @def NET_DEVICE_DT_DEFINE_INSTANCE
+ *
+ * @brief Like NET_DEVICE_OFFLOAD_INIT but taking metadata from a devicetree.
+ * Create multiple network interfaces and bind them to network device.
+ * If your network device needs more than one instance of a network interface,
+ * use this macro below and provide a different instance suffix each time
+ * (0, 1, 2, ... or a, b, c ... whatever works for you)
+ *
+ * @param node_id The devicetree node identifier.
+ * @param instance Instance identifier.
+ * @param init_fn Address to the init function of the driver.
+ * @param pm_control_fn Pointer to device_pm_control function.
+ * Can be empty function (device_pm_control_nop) if not implemented.
+ * @param data Pointer to the device's private data.
+ * @param cfg The address to the structure containing the
+ * configuration information for this instance of the driver.
+ * @param prio The initialization level at which configuration occurs.
+ * @param api Provides an initial pointer to the API function struct
+ * used by the driver. Can be NULL.
+ * @param l2 Network L2 layer for this network interface.
+ * @param l2_ctx_type Type of L2 context data.
+ * @param mtu Maximum transfer unit in bytes for this network interface.
+ */
+#define NET_DEVICE_DT_DEFINE_INSTANCE(node_id, instance, init_fn,		\
+				    pm_control_fn, data, cfg, prio,	\
+				    api, l2, l2_ctx_type, mtu)		\
+	Z_NET_DEVICE_INIT_INSTANCE(node_id, node_id, DT_LABEL(node_id),	\
+				   instance, init_fn, pm_control_fn,	\
+				   data, cfg, prio, api, l2,		\
+				   l2_ctx_type, mtu)
+
+/**
+ * @def NET_DEVICE_DT_INST_DEFINE_INSTANCE
+ *
+ * @brief Like NET_DEVICE_DT_DEFINE_INSTANCE for an instance of a DT_DRV_COMPAT
+ * compatible
+ *
+ * @param inst instance number.  This is replaced by
+ * <tt>DT_DRV_COMPAT(inst)</tt> in the call to NET_DEVICE_DT_DEFINE_INSTANCE.
+ *
+ * @param ... other parameters as expected by NET_DEVICE_DT_DEFINE_INSTANCE.
+ */
+#define NET_DEVICE_DT_INST_DEFINE_INSTANCE(inst, ...) \
+	NET_DEVICE_DT_DEFINE_INSTANCE(DT_DRV_INST(inst), __VA_ARGS__)
+
+#define Z_NET_DEVICE_OFFLOAD_INIT(node_id, dev_name, drv_name, init_fn,	\
+				  pm_control_fn, data, cfg, prio,	\
+				  api, mtu)				\
+	Z_DEVICE_DEFINE(node_id, dev_name, drv_name, init_fn,		\
+			pm_control_fn, data, cfg, POST_KERNEL, prio, api);\
+	NET_IF_OFFLOAD_INIT(dev_name, 0, mtu)
 
 /**
  * @def NET_DEVICE_OFFLOAD_INIT
@@ -2297,7 +2396,7 @@ struct net_if_api {
  * @param pm_control_fn Pointer to device_pm_control function.
  * Can be empty function (device_pm_control_nop) if not implemented.
  * @param data Pointer to the device's private data.
- * @param cfg_info The address to the structure containing the
+ * @param cfg The address to the structure containing the
  * configuration information for this instance of the driver.
  * @param prio The initialization level at which configuration occurs.
  * @param api Provides an initial pointer to the API function struct
@@ -2305,11 +2404,51 @@ struct net_if_api {
  * @param mtu Maximum transfer unit in bytes for this network interface.
  */
 #define NET_DEVICE_OFFLOAD_INIT(dev_name, drv_name, init_fn,		\
-				pm_control_fn, data, cfg_info, prio,	\
-				api, mtu)				\
-	DEVICE_DEFINE(dev_name, drv_name, init_fn, pm_control_fn, data,	\
-		      cfg_info, POST_KERNEL, prio, api);		\
-	NET_IF_OFFLOAD_INIT(dev_name, 0, mtu)
+				pm_control_fn, data, cfg, prio, api, mtu)\
+	Z_NET_DEVICE_OFFLOAD_INIT(DT_INVALID_NODE, dev_name, drv_name,	\
+				init_fn, pm_control_fn, data, cfg, prio,\
+				api, mtu)
+
+/**
+ * @def NET_DEVICE_DT_OFFLOAD_DEFINE
+ *
+ * @brief Like NET_DEVICE_OFFLOAD_INIT but taking metadata from a devicetree
+ * node. Create a offloaded network interface and bind it to network device.
+ * The offloaded network interface is implemented by a device vendor HAL or
+ * similar.
+ *
+ * @param node_id The devicetree node identifier.
+ * @param init_fn Address to the init function of the driver.
+ * @param pm_control_fn Pointer to device_pm_control function.
+ * Can be empty function (device_pm_control_nop) if not implemented.
+ * @param data Pointer to the device's private data.
+ * @param cfg The address to the structure containing the
+ * configuration information for this instance of the driver.
+ * @param prio The initialization level at which configuration occurs.
+ * @param api Provides an initial pointer to the API function struct
+ * used by the driver. Can be NULL.
+ * @param mtu Maximum transfer unit in bytes for this network interface.
+ */
+#define NET_DEVICE_DT_OFFLOAD_DEFINE(node_id, init_fn, pm_control_fn,	\
+				   data, cfg, prio, api, mtu)		\
+	Z_NET_DEVICE_OFFLOAD_INIT(node_id, Z_DEVICE_DT_DEV_NAME(node_id), \
+				  DT_PROP_OR(node_id, label, NULL),	\
+				  init_fn, pm_control_fn, data, cfg,	\
+				  prio, api, mtu)
+
+/**
+ * @def NET_DEVICE_DT_INST_OFFLOAD_DEFINE
+ *
+ * @brief Like NET_DEVICE_DT_OFFLOAD_DEFINE for an instance of a DT_DRV_COMPAT
+ * compatible
+ *
+ * @param inst instance number.  This is replaced by
+ * <tt>DT_DRV_COMPAT(inst)</tt> in the call to NET_DEVICE_DT_OFFLOAD_DEFINE.
+ *
+ * @param ... other parameters as expected by NET_DEVICE_DT_OFFLOAD_DEFINE.
+ */
+#define NET_DEVICE_DT_INST_OFFLOAD_DEFINE(inst, ...) \
+	NET_DEVICE_DT_OFFLOAD_DEFINE(DT_DRV_INST(inst), __VA_ARGS__)
 
 #ifdef __cplusplus
 }

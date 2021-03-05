@@ -24,11 +24,11 @@
  *  @param isr_func Pointer to the ISR function for the device.
  *  @param isr_dev Pointer to the device that will service the interrupt.
  */
-static int isr_register(struct device *dev, isr_t isr_func,
-				 struct device *isr_dev)
+static int isr_register(const struct device *dev, isr_t isr_func,
+				 const struct device *isr_dev)
 {
-	struct shared_irq_runtime *clients = dev->driver_data;
-	const struct shared_irq_config *config = dev->config_info;
+	struct shared_irq_runtime *clients = dev->data;
+	const struct shared_irq_config *config = dev->config;
 	uint32_t i;
 
 	for (i = 0U; i < config->client_count; i++) {
@@ -46,10 +46,11 @@ static int isr_register(struct device *dev, isr_t isr_func,
  *  @param dev Pointer to device structure for SHARED_IRQ driver instance.
  *  @param isr_dev Pointer to the device that will service the interrupt.
  */
-static inline int enable(struct device *dev, struct device *isr_dev)
+static inline int enable(const struct device *dev,
+			 const struct device *isr_dev)
 {
-	struct shared_irq_runtime *clients = dev->driver_data;
-	const struct shared_irq_config *config = dev->config_info;
+	struct shared_irq_runtime *clients = dev->data;
+	const struct shared_irq_config *config = dev->config;
 	uint32_t i;
 
 	for (i = 0U; i < config->client_count; i++) {
@@ -78,10 +79,11 @@ static int last_enabled_isr(struct shared_irq_runtime *clients, int count)
  *  @param dev Pointer to device structure for SHARED_IRQ driver instance.
  *  @param isr_dev Pointer to the device that will service the interrupt.
  */
-static inline int disable(struct device *dev, struct device *isr_dev)
+static inline int disable(const struct device *dev,
+			  const struct device *isr_dev)
 {
-	struct shared_irq_runtime *clients = dev->driver_data;
-	const struct shared_irq_config *config = dev->config_info;
+	struct shared_irq_runtime *clients = dev->data;
+	const struct shared_irq_config *config = dev->config;
 	uint32_t i;
 
 	for (i = 0U; i < config->client_count; i++) {
@@ -96,10 +98,10 @@ static inline int disable(struct device *dev, struct device *isr_dev)
 	return -EIO;
 }
 
-void shared_irq_isr(struct device *dev)
+void shared_irq_isr(const struct device *dev)
 {
-	struct shared_irq_runtime *clients = dev->driver_data;
-	const struct shared_irq_config *config = dev->config_info;
+	struct shared_irq_runtime *clients = dev->data;
+	const struct shared_irq_config *config = dev->config;
 	uint32_t i;
 
 	for (i = 0U; i < config->client_count; i++) {
@@ -116,9 +118,9 @@ static const struct shared_irq_driver_api api_funcs = {
 };
 
 
-int shared_irq_initialize(struct device *dev)
+int shared_irq_initialize(const struct device *dev)
 {
-	const struct shared_irq_config *config = dev->config_info;
+	const struct shared_irq_config *config = dev->config;
 	config->config();
 	return 0;
 }
@@ -134,8 +136,8 @@ const struct shared_irq_config shared_irq_config_0 = {
 
 struct shared_irq_runtime shared_irq_0_runtime;
 
-DEVICE_AND_API_INIT(shared_irq_0, DT_INST_LABEL(0),
-		shared_irq_initialize, &shared_irq_0_runtime,
+DEVICE_DT_INST_DEFINE(0, shared_irq_initialize,
+		device_pm_control_nop, &shared_irq_0_runtime,
 		&shared_irq_config_0, POST_KERNEL,
 		CONFIG_SHARED_IRQ_INIT_PRIORITY, &api_funcs);
 
@@ -143,7 +145,7 @@ void shared_irq_config_0_irq(void)
 {
 	IRQ_CONNECT(DT_INST_IRQN(0),
 		    DT_INST_IRQ(0, priority),
-		    shared_irq_isr, DEVICE_GET(shared_irq_0),
+		    shared_irq_isr, DEVICE_DT_INST_GET(0),
 		    DT_INST_IRQ(0, sense));
 }
 
@@ -160,8 +162,8 @@ const struct shared_irq_config shared_irq_config_1 = {
 
 struct shared_irq_runtime shared_irq_1_runtime;
 
-DEVICE_AND_API_INIT(shared_irq_1, DT_INST_LABEL(1),
-		shared_irq_initialize, &shared_irq_1_runtime,
+DEVICE_DT_INST_DEFINE(1, shared_irq_initialize,
+		device_pm_control_nop, &shared_irq_1_runtime,
 		&shared_irq_config_1, POST_KERNEL,
 		CONFIG_SHARED_IRQ_INIT_PRIORITY, &api_funcs);
 
@@ -169,7 +171,7 @@ void shared_irq_config_1_irq(void)
 {
 	IRQ_CONNECT(DT_INST_IRQN(1),
 		    DT_INST_IRQ(1, priority),
-		    shared_irq_isr, DEVICE_GET(shared_irq_1),
+		    shared_irq_isr, DEVICE_DT_INST_GET(1),
 		    DT_INST_IRQ(1, sense));
 }
 

@@ -199,7 +199,9 @@ void add_ipv6_addr_to_ot(struct openthread_context *context)
 		return;
 	}
 
+	openthread_api_mutex_lock(context);
 	otIp6AddUnicastAddress(context->instance, &addr);
+	openthread_api_mutex_unlock(context);
 
 	if (CONFIG_OPENTHREAD_L2_LOG_LEVEL == LOG_LEVEL_DBG) {
 		char buf[NET_IPV6_ADDR_LEN];
@@ -232,7 +234,9 @@ void add_ipv6_maddr_to_ot(struct openthread_context *context)
 		}
 	}
 
+	openthread_api_mutex_lock(context);
 	otIp6SubscribeMulticastAddress(context->instance, &addr);
+	openthread_api_mutex_unlock(context);
 
 	if (CONFIG_OPENTHREAD_L2_LOG_LEVEL == LOG_LEVEL_DBG) {
 		char buf[NET_IPV6_ADDR_LEN];
@@ -246,6 +250,7 @@ void add_ipv6_maddr_to_ot(struct openthread_context *context)
 void add_ipv6_maddr_to_zephyr(struct openthread_context *context)
 {
 	const otNetifMulticastAddress *maddress;
+	struct net_if_mcast_addr *zmaddr;
 
 	for (maddress = otIp6GetMulticastAddresses(context->instance);
 	     maddress; maddress = maddress->mNext) {
@@ -265,8 +270,18 @@ void add_ipv6_maddr_to_zephyr(struct openthread_context *context)
 							 buf, sizeof(buf))));
 		}
 
-		net_if_ipv6_maddr_add(context->iface,
+		zmaddr = net_if_ipv6_maddr_add(context->iface,
 				      (struct in6_addr *)(&maddress->mAddress));
+
+		if (zmaddr &&
+		    !(net_if_ipv6_maddr_is_joined(zmaddr) ||
+		      net_ipv6_is_addr_mcast_iface(
+				(struct in6_addr *)(&maddress->mAddress)) ||
+		      net_ipv6_is_addr_mcast_link_all_nodes(
+				(struct in6_addr *)(&maddress->mAddress)))) {
+
+			net_if_ipv6_maddr_join(zmaddr);
+		}
 	}
 }
 

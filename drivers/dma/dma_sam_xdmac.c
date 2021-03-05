@@ -28,8 +28,8 @@ LOG_MODULE_REGISTER(dma_sam_xdmac);
 
 /* DMA channel configuration */
 struct sam_xdmac_channel_cfg {
-	void *callback_arg;
-	dma_callback callback;
+	void *user_data;
+	dma_callback_t callback;
 };
 
 /* Device constant configuration parameters */
@@ -47,13 +47,12 @@ struct sam_xdmac_dev_data {
 
 #define DEV_NAME(dev) ((dev)->name)
 #define DEV_CFG(dev) \
-	((const struct sam_xdmac_dev_cfg *const)(dev)->config_info)
+	((const struct sam_xdmac_dev_cfg *const)(dev)->config)
 #define DEV_DATA(dev) \
-	((struct sam_xdmac_dev_data *const)(dev)->driver_data)
+	((struct sam_xdmac_dev_data *const)(dev)->data)
 
-static void sam_xdmac_isr(void *arg)
+static void sam_xdmac_isr(const struct device *dev)
 {
-	struct device *dev = (struct device *)arg;
 	const struct sam_xdmac_dev_cfg *const dev_cfg = DEV_CFG(dev);
 	struct sam_xdmac_dev_data *const dev_data = DEV_DATA(dev);
 	Xdmac *const xdmac = dev_cfg->regs;
@@ -76,13 +75,13 @@ static void sam_xdmac_isr(void *arg)
 
 		/* Execute callback */
 		if (channel_cfg->callback) {
-			channel_cfg->callback(channel_cfg->callback_arg,
-					channel, err);
+			channel_cfg->callback(dev, channel_cfg->user_data,
+					      channel, err);
 		}
 	}
 }
 
-int sam_xdmac_channel_configure(struct device *dev, uint32_t channel,
+int sam_xdmac_channel_configure(const struct device *dev, uint32_t channel,
 				struct sam_xdmac_channel_config *param)
 {
 	const struct sam_xdmac_dev_cfg *const dev_cfg = DEV_CFG(dev);
@@ -124,7 +123,7 @@ int sam_xdmac_channel_configure(struct device *dev, uint32_t channel,
 	return 0;
 }
 
-int sam_xdmac_transfer_configure(struct device *dev, uint32_t channel,
+int sam_xdmac_transfer_configure(const struct device *dev, uint32_t channel,
 				 struct sam_xdmac_transfer_config *param)
 {
 	const struct sam_xdmac_dev_cfg *const dev_cfg = DEV_CFG(dev);
@@ -176,7 +175,7 @@ int sam_xdmac_transfer_configure(struct device *dev, uint32_t channel,
 	return 0;
 }
 
-static int sam_xdmac_config(struct device *dev, uint32_t channel,
+static int sam_xdmac_config(const struct device *dev, uint32_t channel,
 			    struct dma_config *cfg)
 {
 	struct sam_xdmac_dev_data *const dev_data = DEV_DATA(dev);
@@ -258,7 +257,7 @@ static int sam_xdmac_config(struct device *dev, uint32_t channel,
 	}
 
 	dev_data->dma_channels[channel].callback = cfg->dma_callback;
-	dev_data->dma_channels[channel].callback_arg = cfg->callback_arg;
+	dev_data->dma_channels[channel].user_data = cfg->user_data;
 
 	(void)memset(&transfer_cfg, 0, sizeof(transfer_cfg));
 	transfer_cfg.sa = cfg->head_block->source_address;
@@ -270,7 +269,7 @@ static int sam_xdmac_config(struct device *dev, uint32_t channel,
 	return ret;
 }
 
-int sam_xdmac_transfer_start(struct device *dev, uint32_t channel)
+int sam_xdmac_transfer_start(const struct device *dev, uint32_t channel)
 {
 	Xdmac *const xdmac = DEV_CFG(dev)->regs;
 
@@ -291,7 +290,7 @@ int sam_xdmac_transfer_start(struct device *dev, uint32_t channel)
 	return 0;
 }
 
-int sam_xdmac_transfer_stop(struct device *dev, uint32_t channel)
+int sam_xdmac_transfer_stop(const struct device *dev, uint32_t channel)
 {
 	Xdmac *const xdmac = DEV_CFG(dev)->regs;
 
@@ -316,7 +315,7 @@ int sam_xdmac_transfer_stop(struct device *dev, uint32_t channel)
 	return 0;
 }
 
-static int sam_xdmac_initialize(struct device *dev)
+static int sam_xdmac_initialize(const struct device *dev)
 {
 	const struct sam_xdmac_dev_cfg *const dev_cfg = DEV_CFG(dev);
 	Xdmac *const xdmac = dev_cfg->regs;
@@ -348,12 +347,10 @@ static const struct dma_driver_api sam_xdmac_driver_api = {
 
 /* DMA0 */
 
-DEVICE_DECLARE(dma0_sam);
-
 static void dma0_sam_irq_config(void)
 {
 	IRQ_CONNECT(DT_INST_IRQN(0), DT_INST_IRQ(0, priority), sam_xdmac_isr,
-		    DEVICE_GET(dma0_sam), 0);
+		    DEVICE_DT_INST_GET(0), 0);
 }
 
 static const struct sam_xdmac_dev_cfg dma0_sam_config = {
@@ -365,6 +362,6 @@ static const struct sam_xdmac_dev_cfg dma0_sam_config = {
 
 static struct sam_xdmac_dev_data dma0_sam_data;
 
-DEVICE_AND_API_INIT(dma0_sam, DT_INST_LABEL(0), &sam_xdmac_initialize,
+DEVICE_DT_INST_DEFINE(0, &sam_xdmac_initialize, device_pm_control_nop,
 		    &dma0_sam_data, &dma0_sam_config, POST_KERNEL,
 		    CONFIG_KERNEL_INIT_PRIORITY_DEVICE, &sam_xdmac_driver_api);

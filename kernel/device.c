@@ -20,14 +20,42 @@ extern const struct init_entry __init_end[];
 extern const struct init_entry __init_SMP_start[];
 #endif
 
-extern struct device __device_start[];
-extern struct device __device_end[];
+extern const struct device __device_start[];
+extern const struct device __device_end[];
 
-#ifdef CONFIG_DEVICE_POWER_MANAGEMENT
-extern uint32_t __device_busy_start[];
-extern uint32_t __device_busy_end[];
-#define DEVICE_BUSY_SIZE (__device_busy_end - __device_busy_start)
-#endif
+extern uint32_t __device_init_status_start[];
+
+static inline void device_pm_state_init(const struct device *dev)
+{
+#ifdef CONFIG_PM_DEVICE
+	*dev->pm = (struct device_pm){
+		.usage = ATOMIC_INIT(0),
+		.lock = Z_SEM_INITIALIZER(dev->pm->lock, 1, 1),
+		.signal = K_POLL_SIGNAL_INITIALIZER(dev->pm->signal),
+		.event = K_POLL_EVENT_INITIALIZER(
+			K_POLL_TYPE_SIGNAL,
+			K_POLL_MODE_NOTIFY_ONLY,
+			&dev->pm->signal),
+	};
+#endif /* CONFIG_PM_DEVICE */
+}
+
+/**
+ * @brief Initialize state for all static devices.
+ *
+ * The state object is always zero-initialized, but this may not be
+ * sufficient.
+ */
+void z_device_state_init(void)
+{
+	const struct device *dev = __device_start;
+
+	while (dev < __device_end) {
+		device_pm_state_init(dev);
+		z_object_init(dev);
+		++dev;
+	}
+}
 
 /**
  * @brief Execute all the init entry initialization functions at a given level
@@ -56,29 +84,37 @@ void z_sys_init_run_level(int32_t level)
 	const struct init_entry *entry;
 
 	for (entry = levels[level]; entry < levels[level+1]; entry++) {
-		struct device *dev = entry->dev;
-		int retval;
+		const struct device *dev = entry->dev;
+		int rc = entry->init(dev);
 
 		if (dev != NULL) {
-			z_object_init(dev);
-		}
-
-		retval = entry->init(dev);
-		if (retval != 0) {
-			if (dev) {
-				/* Initialization failed. Clear the API struct
-				 * so that device_get_binding() will not succeed
-				 * for it.
-				 */
-				dev->driver_api = NULL;
+			/* Mark device initialized.  If initialization
+			 * failed, record the error condition.
+			 */
+			if (rc != 0) {
+				if (rc < 0) {
+					rc = -rc;
+				}
+				if (rc > UINT8_MAX) {
+					rc = UINT8_MAX;
+				}
+				dev->state->init_res = rc;
 			}
+			dev->state->initialized = true;
 		}
 	}
 }
 
-struct device *z_impl_device_get_binding(const char *name)
+const struct device *z_impl_device_get_binding(const char *name)
 {
-	struct device *dev;
+	const struct device *dev;
+
+	/* A null string identifies no device.  So does an empty
+	 * string.
+	 */
+	if ((name == NULL) || (*name == 0)) {
+		return NULL;
+	}
 
 	/* Split the search into two loops: in the common scenario, where
 	 * device names are stored in ROM (and are referenced by the user
@@ -101,7 +137,7 @@ struct device *z_impl_device_get_binding(const char *name)
 }
 
 #ifdef CONFIG_USERSPACE
-static inline struct device *z_vrfy_device_get_binding(const char *name)
+static inline const struct device *z_vrfy_device_get_binding(const char *name)
 {
 	char name_copy[Z_DEVICE_MAX_NAME_LEN];
 
@@ -115,38 +151,46 @@ static inline struct device *z_vrfy_device_get_binding(const char *name)
 #include <syscalls/device_get_binding_mrsh.c>
 #endif /* CONFIG_USERSPACE */
 
-size_t z_device_get_all_static(struct device **devices)
+size_t z_device_get_all_static(struct device const **devices)
 {
 	*devices = __device_start;
 	return __device_end - __device_start;
 }
 
-#ifdef CONFIG_DEVICE_POWER_MANAGEMENT
-int device_pm_control_nop(struct device *unused_device,
-		       uint32_t unused_ctrl_command,
-		       void *unused_context,
-		       device_pm_cb cb,
-		       void *unused_arg)
+bool z_device_ready(const struct device *dev)
+{
+	return dev->state->initialized && (dev->state->init_res == 0);
+}
+
+#ifdef CONFIG_PM_DEVICE
+int device_pm_control_nop(const struct device *unused_device,
+			  uint32_t unused_ctrl_command,
+			  void *unused_context,
+			  device_pm_cb cb,
+			  void *unused_arg)
 {
 	return -ENOTSUP;
 }
 
 int device_any_busy_check(void)
 {
-	int i = 0;
+	const struct device *dev = __device_start;
 
-	for (i = 0; i < DEVICE_BUSY_SIZE; i++) {
-		if (__device_busy_start[i] != 0U) {
+	while (dev < __device_end) {
+		if (atomic_test_bit(&dev->pm->atomic_flags,
+				    DEVICE_PM_ATOMIC_FLAGS_BUSY_BIT)) {
 			return -EBUSY;
 		}
+		++dev;
 	}
+
 	return 0;
 }
 
-int device_busy_check(struct device *chk_dev)
+int device_busy_check(const struct device *dev)
 {
-	if (atomic_test_bit((const atomic_t *)__device_busy_start,
-			    (chk_dev - __device_start))) {
+	if (atomic_test_bit(&dev->pm->atomic_flags,
+			    DEVICE_PM_ATOMIC_FLAGS_BUSY_BIT)) {
 		return -EBUSY;
 	}
 	return 0;
@@ -154,22 +198,22 @@ int device_busy_check(struct device *chk_dev)
 
 #endif
 
-void device_busy_set(struct device *busy_dev)
+void device_busy_set(const struct device *dev)
 {
-#ifdef CONFIG_DEVICE_POWER_MANAGEMENT
-	atomic_set_bit((atomic_t *) __device_busy_start,
-		       (busy_dev - __device_start));
+#ifdef CONFIG_PM_DEVICE
+	atomic_set_bit(&dev->pm->atomic_flags,
+		       DEVICE_PM_ATOMIC_FLAGS_BUSY_BIT);
 #else
-	ARG_UNUSED(busy_dev);
+	ARG_UNUSED(dev);
 #endif
 }
 
-void device_busy_clear(struct device *busy_dev)
+void device_busy_clear(const struct device *dev)
 {
-#ifdef CONFIG_DEVICE_POWER_MANAGEMENT
-	atomic_clear_bit((atomic_t *) __device_busy_start,
-			 (busy_dev - __device_start));
+#ifdef CONFIG_PM_DEVICE
+	atomic_clear_bit(&dev->pm->atomic_flags,
+			 DEVICE_PM_ATOMIC_FLAGS_BUSY_BIT);
 #else
-	ARG_UNUSED(busy_dev);
+	ARG_UNUSED(dev);
 #endif
 }

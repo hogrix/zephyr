@@ -71,16 +71,19 @@ introduced overriding node element:
 Board specific shield configuration
 -----------------------------------
 
-If modifications are needed to fit a shield to a particular board, you can
-override a shield description for a specific board by adding board-overriding
-files to a shield, as follows:
+If modifications are needed to fit a shield to a particular board or board
+revision, you can override a shield description for a specific board by adding
+board or board revision overriding files to a shield, as follows:
 
 .. code-block:: none
 
    boards/shields/<shield>
-   └── <boards>
-       ├── board.overlay
-       └── board.defconfig
+   └── boards
+       ├── <board>_<revision>.overlay
+       ├── <board>.overlay
+       ├── <board>.defconfig
+       ├── <board>_<revision>.conf
+       └── <board>.conf
 
 
 Shield activation
@@ -132,10 +135,10 @@ revision:
    ├── <shield_v1>.defconfig
    ├── <shield_v2>.overlay
    ├── <shield_v2>.defconfig
-   └── <boards>
+   └── boards
        └── <shield_v2>
-           ├── board.overlay
-           └── board.defconfig
+           ├── <board>.overlay
+           └── <board>.defconfig
 
 GPIO nexus nodes
 ****************

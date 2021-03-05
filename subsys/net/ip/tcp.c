@@ -234,7 +234,7 @@ static void tcp_retry_expired(struct k_work *work)
 		pkt = CONTAINER_OF(sys_slist_peek_head(&tcp->sent_list),
 				   struct net_pkt, sent_list);
 
-		if (k_work_pending(net_pkt_work(pkt))) {
+		if (k_work_is_pending(net_pkt_work(pkt))) {
 			/* If the packet is still pending in TX queue, then do
 			 * not try to resend it again. This can happen if the
 			 * device is so busy that the TX thread has not yet
@@ -243,6 +243,20 @@ static void tcp_retry_expired(struct k_work *work)
 			NET_DBG("[%p] pkt %p still pending in TX queue",
 				tcp, pkt);
 			return;
+		}
+
+		if (IS_ENABLED(CONFIG_NET_PKT_TXTIME_STATS)) {
+			/* If we have enabled net_pkt TXTIME statistics, and we
+			 * about to re-send already sent net_pkt, then reset
+			 * the net_pkt start time as otherwise the TX average
+			 * will be wrong (as it would be calculated from when
+			 * the packet was created).
+			 */
+			struct net_ptp_time tp = {
+				.nanosecond = k_cycle_get_32(),
+			};
+
+			net_pkt_set_timestamp(pkt, &tp);
 		}
 
 		net_pkt_set_queued(pkt, true);
@@ -377,7 +391,7 @@ int net_tcp_release(struct net_tcp *tcp)
 			 * it go as it will be released by L2 after it is
 			 * sent.
 			 */
-			if (k_work_pending(net_pkt_work(pkt)) ||
+			if (k_work_is_pending(net_pkt_work(pkt)) ||
 			    net_pkt_sent(pkt)) {
 				refcount--;
 			}

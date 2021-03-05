@@ -89,8 +89,8 @@
 &i2c2 {
 	compatible = "nordic,nrf-twim";
 	status = "okay";
-	sda-pin = <25>;
-	scl-pin = <26>;
+	sda-gpios = <&gpio0 25 0>;
+	scl-gpios = <&gpio0 26 0>;
 
 	clock-frequency = <I2C_BITRATE_FAST>;
 
@@ -98,6 +98,10 @@
 		compatible = "ti,bq274xx";
 		label = "BQ274XX";
 		reg = <0x55>;
+		design-voltage = <3700>;
+		design-capacity = <1800>;
+		taper-current = <45>;
+		terminate-voltage = <3000>;
 	};
 
 	lis2dh12-accel@19 {
@@ -164,10 +168,7 @@
 };
 
 &flash0 {
-	/*
-	 * For more information, see:
-	 * http://docs.zephyrproject.org/latest/guides/dts/index.html#flash-partitions
-	 */
+
 	partitions {
 		compatible = "fixed-partitions";
 		#address-cells = <1>;
@@ -203,13 +204,11 @@
 / {
 	/* SRAM allocated and used by the BSD library */
 	sram0_bsd: memory@20010000 {
-		device_type = "memory";
 		compatible = "mmio-sram";
 	};
 
 	/* SRAM allocated to the Non-Secure image */
 	sram0_ns: memory@20020000 {
-		device_type = "memory";
 		compatible = "mmio-sram";
 	};
 };

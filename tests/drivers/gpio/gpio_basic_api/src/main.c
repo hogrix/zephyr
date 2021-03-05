@@ -36,7 +36,7 @@ static void board_setup(void)
 #if defined(CONFIG_BOARD_FRDM_K64F)
 	/* TODO figure out how to get this from "GPIO_2" */
 	const char *pmx_name = "portc";
-	struct device *pmx = device_get_binding(pmx_name);
+	const struct device *pmx = device_get_binding(pmx_name);
 
 	pinmux_pin_set(pmx, PIN_OUT, PORT_PCR_MUX(kPORT_MuxAsGpio));
 	pinmux_pin_set(pmx, PIN_IN, PORT_PCR_MUX(kPORT_MuxAsGpio));
@@ -98,8 +98,7 @@ static void board_setup(void)
 			    IOMUXC_SW_PAD_CTL_PAD_DSE(6));
 #elif defined(CONFIG_SOC_FAMILY_LPC)
 	/* Assumes ARDUINO pins are mapped on PORT0 on all boards*/
-	struct device *port0 =
-		device_get_binding(CONFIG_PINMUX_MCUX_LPC_PORT0_NAME);
+	const struct device *port0 = DEVICE_DT_GET(DT_NODELABEL(pio0));
 	const uint32_t pin_config = (
 			IOCON_PIO_FUNC0 |
 			IOCON_PIO_INV_DI |
@@ -111,10 +110,17 @@ static void board_setup(void)
 	pinmux_pin_set(port0, PIN_OUT, pin_config);
 #elif defined(CONFIG_BOARD_RV32M1_VEGA)
 	const char *pmx_name = DT_LABEL(DT_NODELABEL(porta));
-	struct device *pmx = device_get_binding(pmx_name);
+	const struct device *pmx = device_get_binding(pmx_name);
 
 	pinmux_pin_set(pmx, PIN_OUT, PORT_PCR_MUX(kPORT_MuxAsGpio));
 	pinmux_pin_set(pmx, PIN_IN, PORT_PCR_MUX(kPORT_MuxAsGpio));
+#elif defined(CONFIG_GPIO_EMUL)
+	extern struct gpio_callback gpio_emul_callback;
+	const struct device *dev = device_get_binding(DEV_NAME);
+	zassert_not_equal(dev, NULL,
+			  "Device not found");
+	int rc = gpio_add_callback(dev, &gpio_emul_callback);
+	__ASSERT(rc == 0, "gpio_add_callback() failed: %d", rc);
 #endif
 }
 

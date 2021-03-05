@@ -50,6 +50,10 @@ config PWM_MCUX_FTM
 	default y
 	depends on PWM
 
+config PWM_MCUX_PWT
+	default y
+	depends on PWM_CAPTURE
+
 config PINMUX_MCUX
 	default y
 	depends on PINMUX
@@ -84,6 +88,10 @@ config ADC_MCUX_ADC12
 config DAC_MCUX_DAC32
 	default y
 	depends on DAC
+
+config DMA_MCUX_EDMA
+	default y
+	depends on DMA
 
 source "soc/arm/nxp_kinetis/ke1xf/Kconfig.defconfig.mke*"
 

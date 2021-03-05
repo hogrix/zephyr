@@ -8,9 +8,8 @@
 #include <string.h>
 
 #include <toolchain.h>
-#include <zephyr/types.h>
+
 #include <soc.h>
-#include <drivers/clock_control.h>
 
 #include "hal/cpu.h"
 #include "hal/cntr.h"
@@ -105,7 +104,8 @@ static void isr_tx(void *param)
 
 	/* LE Test Packet Interval */
 	l = radio_tmr_end_get() - radio_tmr_ready_get();
-	i = ((l + 249 + 624) / 625) * 625U;
+	i = ((l + 249 + (SCAN_INT_UNIT_US - 1)) / SCAN_INT_UNIT_US) *
+		SCAN_INT_UNIT_US;
 	t = radio_tmr_end_get() - l + i;
 	t -= radio_tx_ready_delay_get(test_phy, test_phy_flags);
 
@@ -113,7 +113,7 @@ static void isr_tx(void *param)
 	radio_tmr_sample();
 	s = radio_tmr_sample_get();
 	while (t < s) {
-		t += 625U;
+		t += SCAN_INT_UNIT_US;
 	}
 
 	/* Setup next Tx */
@@ -336,7 +336,7 @@ uint32_t ll_test_end(uint16_t *num_rx)
 
 	/* Release resources acquired for Radio */
 	err = lll_hfclock_off();
-	LL_ASSERT(!err || err == -EBUSY);
+	LL_ASSERT(err >= 0);
 
 	/* Stop coarse timer */
 	cntr_stop();

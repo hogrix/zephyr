@@ -188,9 +188,10 @@ static uint8_t bme680_calc_gas_wait(uint16_t dur)
 	return durval;
 }
 
-static int bme680_sample_fetch(struct device *dev, enum sensor_channel chan)
+static int bme680_sample_fetch(const struct device *dev,
+			       enum sensor_channel chan)
 {
-	struct bme680_data *data = dev->driver_data;
+	struct bme680_data *data = dev->data;
 	uint8_t buff[BME680_LEN_FIELD] = { 0 };
 	uint8_t gas_range;
 	uint32_t adc_temp, adc_press;
@@ -233,10 +234,11 @@ static int bme680_sample_fetch(struct device *dev, enum sensor_channel chan)
 	return 0;
 }
 
-static int bme680_channel_get(struct device *dev, enum sensor_channel chan,
+static int bme680_channel_get(const struct device *dev,
+			      enum sensor_channel chan,
 			      struct sensor_value *val)
 {
-	struct bme680_data *data = dev->driver_data;
+	struct bme680_data *data = dev->data;
 
 	switch (chan) {
 	case SENSOR_CHAN_AMBIENT_TEMP:
@@ -339,9 +341,9 @@ static int bme680_read_compensation(struct bme680_data *data)
 	return 0;
 }
 
-static int bme680_chip_init(struct device *dev)
+static int bme680_chip_init(const struct device *dev)
 {
-	struct bme680_data *data = (struct bme680_data *)dev->driver_data;
+	struct bme680_data *data = (struct bme680_data *)dev->data;
 	int err;
 
 	err = bme680_reg_read(data, BME680_REG_CHIP_ID, &data->chip_id, 1);
@@ -398,9 +400,9 @@ static int bme680_chip_init(struct device *dev)
 	return 0;
 }
 
-static int bme680_init(struct device *dev)
+static int bme680_init(const struct device *dev)
 {
-	struct bme680_data *data = dev->driver_data;
+	struct bme680_data *data = dev->data;
 
 	data->i2c_master = device_get_binding(
 		DT_INST_BUS_LABEL(0));
@@ -426,6 +428,6 @@ static const struct sensor_driver_api bme680_api_funcs = {
 
 static struct bme680_data bme680_data;
 
-DEVICE_AND_API_INIT(bme680, DT_INST_LABEL(0), bme680_init, &bme680_data,
+DEVICE_DT_INST_DEFINE(0, bme680_init, device_pm_control_nop, &bme680_data,
 		    NULL, POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY,
 		    &bme680_api_funcs);

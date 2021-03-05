@@ -12,8 +12,10 @@
 
 #include <dt-bindings/interrupt-controller/intel-ioapic.h>
 
+DEVICE_MMIO_TOPLEVEL_STATIC(hpet_regs, DT_DRV_INST(0));
+
 #define HPET_REG32(off) (*(volatile uint32_t *)(long)			\
-		       (DT_INST_REG_ADDR(0) + (off)))
+			 (DEVICE_MMIO_TOPLEVEL_GET(hpet_regs) + (off)))
 
 #define CLK_PERIOD_REG        HPET_REG32(0x04) /* High dword of caps reg */
 #define GENERAL_CONF_REG      HPET_REG32(0x10)
@@ -44,14 +46,9 @@ static unsigned int max_ticks;
 static unsigned int cyc_per_tick;
 static unsigned int last_count;
 
-static void hpet_isr(void *arg)
+static void hpet_isr(const void *arg)
 {
 	ARG_UNUSED(arg);
-
-#ifdef CONFIG_EXECUTION_BENCHMARKING
-	extern void read_timer_start_of_tick_handler(void);
-	read_timer_start_of_tick_handler();
-#endif
 
 	k_spinlock_key_t key = k_spin_lock(&lock);
 
@@ -94,11 +91,6 @@ static void hpet_isr(void *arg)
 
 	k_spin_unlock(&lock, key);
 	z_clock_announce(IS_ENABLED(CONFIG_TICKLESS_KERNEL) ? dticks : 1);
-
-#ifdef CONFIG_EXECUTION_BENCHMARKING
-	extern void read_timer_end_of_tick_handler(void);
-	read_timer_end_of_tick_handler();
-#endif
 }
 
 static void set_timer0_irq(unsigned int irq)
@@ -114,10 +106,14 @@ static void set_timer0_irq(unsigned int irq)
 	TIMER0_CONF_REG = val;
 }
 
-int z_clock_driver_init(struct device *device)
+int z_clock_driver_init(const struct device *device)
 {
 	extern int z_clock_hw_cycles_per_sec;
 	uint32_t hz;
+
+	ARG_UNUSED(device);
+
+	DEVICE_MMIO_TOPLEVEL_MAP(hpet_regs, K_MEM_CACHE_NONE);
 
 	IRQ_CONNECT(DT_INST_IRQN(0),
 		    DT_INST_IRQ(0, priority),
@@ -169,7 +165,7 @@ void z_clock_set_timeout(int32_t ticks, bool idle)
 	}
 
 	ticks = ticks == K_TICKS_FOREVER ? max_ticks : ticks;
-	ticks = MAX(MIN(ticks - 1, (int32_t)max_ticks), 0);
+	ticks = CLAMP(ticks - 1, 0, (int32_t)max_ticks);
 
 	k_spinlock_key_t key = k_spin_lock(&lock);
 	uint32_t now = MAIN_COUNTER_REG, cyc, adj;

@@ -1490,6 +1490,7 @@ static void ipv6_nd_reachable_timeout(struct k_work *work)
 				data->state);
 
 			/* Intentionally continuing to probe state */
+			__fallthrough;
 
 		case NET_IPV6_NBR_STATE_PROBE:
 			if (data->ns_count >= MAX_UNICAST_SOLICIT) {
@@ -1968,7 +1969,7 @@ int net_ipv6_send_rs(struct net_if *iface)
 	struct in6_addr dst;
 	struct net_pkt *pkt;
 
-	net_ipv6_addr_create_ll_allnodes_mcast(&dst);
+	net_ipv6_addr_create_ll_allrouters_mcast(&dst);
 	src = net_if_ipv6_select_src_addr(iface, &dst);
 
 	if (!net_ipv6_is_addr_unspecified(src)) {
@@ -2121,26 +2122,9 @@ static inline void handle_prefix_onlink(struct net_pkt *pkt,
 
 #define TWO_HOURS (2 * 60 * 60)
 
-static uint32_t time_diff(uint32_t time1, uint32_t time2)
-{
-	return (uint32_t)abs((int32_t)time1 - (int32_t)time2);
-}
-
 static inline uint32_t remaining_lifetime(struct net_if_addr *ifaddr)
 {
-	uint64_t remaining;
-
-	if (ifaddr->lifetime.timer_timeout == 0) {
-		return 0;
-	}
-
-	remaining = (uint64_t)ifaddr->lifetime.timer_timeout +
-		(uint64_t)ifaddr->lifetime.wrap_counter *
-		(uint64_t)NET_TIMEOUT_MAX_VALUE -
-		(uint64_t)time_diff(k_uptime_get_32(),
-				 ifaddr->lifetime.timer_start);
-
-	return (uint32_t)(remaining / MSEC_PER_SEC);
+	return net_timeout_remaining(&ifaddr->lifetime, k_uptime_get_32());
 }
 
 static inline void handle_prefix_autonomous(struct net_pkt *pkt,

@@ -8,18 +8,19 @@
 #include <drivers/i2c.h>
 #include <dt-bindings/i2c/i2c.h>
 #include <nrfx_twi.h>
+#include <soc.h>
 
 #include <logging/log.h>
 LOG_MODULE_REGISTER(i2c_nrfx_twi, CONFIG_I2C_LOG_LEVEL);
 
-#define I2C_TRANSFER_TIMEOUT_MSEC		K_MSEC(100)
+#define I2C_TRANSFER_TIMEOUT_MSEC		K_MSEC(500)
 
 struct i2c_nrfx_twi_data {
 	struct k_sem transfer_sync;
 	struct k_sem completion_sync;
 	volatile nrfx_err_t res;
 	uint32_t dev_config;
-#ifdef CONFIG_DEVICE_POWER_MANAGEMENT
+#ifdef CONFIG_PM_DEVICE
 	uint32_t pm_state;
 #endif
 };
@@ -29,18 +30,19 @@ struct i2c_nrfx_twi_config {
 	nrfx_twi_config_t config;
 };
 
-static inline struct i2c_nrfx_twi_data *get_dev_data(struct device *dev)
+static inline struct i2c_nrfx_twi_data *get_dev_data(const struct device *dev)
 {
-	return dev->driver_data;
+	return dev->data;
 }
 
 static inline
-const struct i2c_nrfx_twi_config *get_dev_config(struct device *dev)
+const struct i2c_nrfx_twi_config *get_dev_config(const struct device *dev)
 {
-	return dev->config_info;
+	return dev->config;
 }
 
-static int i2c_nrfx_twi_transfer(struct device *dev, struct i2c_msg *msgs,
+static int i2c_nrfx_twi_transfer(const struct device *dev,
+				 struct i2c_msg *msgs,
 				 uint8_t num_msgs, uint16_t addr)
 {
 	int ret = 0;
@@ -143,8 +145,7 @@ static int i2c_nrfx_twi_transfer(struct device *dev, struct i2c_msg *msgs,
 
 static void event_handler(nrfx_twi_evt_t const *p_event, void *p_context)
 {
-	struct device *dev = p_context;
-	struct i2c_nrfx_twi_data *dev_data = get_dev_data(dev);
+	struct i2c_nrfx_twi_data *dev_data = p_context;
 
 	switch (p_event->type) {
 	case NRFX_TWI_EVT_DONE:
@@ -164,7 +165,8 @@ static void event_handler(nrfx_twi_evt_t const *p_event, void *p_context)
 	k_sem_give(&dev_data->completion_sync);
 }
 
-static int i2c_nrfx_twi_configure(struct device *dev, uint32_t dev_config)
+static int i2c_nrfx_twi_configure(const struct device *dev,
+				  uint32_t dev_config)
 {
 	nrfx_twi_t const *inst = &(get_dev_config(dev)->twi);
 
@@ -193,25 +195,27 @@ static const struct i2c_driver_api i2c_nrfx_twi_driver_api = {
 	.transfer  = i2c_nrfx_twi_transfer,
 };
 
-static int init_twi(struct device *dev)
+static int init_twi(const struct device *dev)
 {
+	struct i2c_nrfx_twi_data *dev_data = get_dev_data(dev);
 	nrfx_err_t result = nrfx_twi_init(&get_dev_config(dev)->twi,
 					  &get_dev_config(dev)->config,
-					  event_handler, dev);
+					  event_handler, dev_data);
 	if (result != NRFX_SUCCESS) {
 		LOG_ERR("Failed to initialize device: %s",
 			    dev->name);
 		return -EBUSY;
 	}
-#ifdef CONFIG_DEVICE_POWER_MANAGEMENT
+#ifdef CONFIG_PM_DEVICE
 	get_dev_data(dev)->pm_state = DEVICE_PM_ACTIVE_STATE;
 #endif
 
 	return 0;
 }
 
-#ifdef CONFIG_DEVICE_POWER_MANAGEMENT
-static int twi_nrfx_pm_control(struct device *dev, uint32_t ctrl_command,
+#ifdef CONFIG_PM_DEVICE
+static int twi_nrfx_pm_control(const struct device *dev,
+				uint32_t ctrl_command,
 				void *context, device_pm_cb cb, void *arg)
 {
 	int ret = 0;
@@ -257,7 +261,7 @@ static int twi_nrfx_pm_control(struct device *dev, uint32_t ctrl_command,
 
 	return ret;
 }
-#endif /* CONFIG_DEVICE_POWER_MANAGEMENT */
+#endif /* CONFIG_PM_DEVICE */
 
 #define I2C_NRFX_TWI_INVALID_FREQUENCY  ((nrf_twi_frequency_t)-1)
 #define I2C_NRFX_TWI_FREQUENCY(bitrate)					       \
@@ -273,7 +277,15 @@ static int twi_nrfx_pm_control(struct device *dev, uint32_t ctrl_command,
 	BUILD_ASSERT(I2C_FREQUENCY(idx)	!=				       \
 		     I2C_NRFX_TWI_INVALID_FREQUENCY,			       \
 		     "Wrong I2C " #idx " frequency setting in dts");	       \
-	static int twi_##idx##_init(struct device *dev)			       \
+	NRF_DT_PSEL_CHECK_EXACTLY_ONE(I2C(idx),				       \
+				      sda_pin, "sda-pin",		       \
+				      sda_gpios, "sda-gpios");		       \
+	NRF_DT_PSEL_CHECK_EXACTLY_ONE(I2C(idx),				       \
+				      scl_pin, "scl-pin",		       \
+				      scl_gpios, "scl-gpios");		       \
+	NRF_DT_CHECK_GPIO_CTLR_IS_SOC(I2C(idx), sda_gpios, "sda-gpios");       \
+	NRF_DT_CHECK_GPIO_CTLR_IS_SOC(I2C(idx), scl_gpios, "scl-gpios");       \
+	static int twi_##idx##_init(const struct device *dev)		\
 	{								       \
 		IRQ_CONNECT(DT_IRQN(I2C(idx)), DT_IRQ(I2C(idx), priority),     \
 			    nrfx_isr, nrfx_twi_##idx##_irq_handler, 0);	       \
@@ -288,13 +300,12 @@ static int twi_nrfx_pm_control(struct device *dev, uint32_t ctrl_command,
 	static const struct i2c_nrfx_twi_config twi_##idx##z_config = {	       \
 		.twi = NRFX_TWI_INSTANCE(idx),				       \
 		.config = {						       \
-			.scl       = DT_PROP(I2C(idx), scl_pin),	       \
-			.sda       = DT_PROP(I2C(idx), sda_pin),	       \
+			.scl = NRF_DT_PSEL(I2C(idx), scl_pin, scl_gpios, 0),   \
+			.sda = NRF_DT_PSEL(I2C(idx), sda_pin, sda_gpios, 0),   \
 			.frequency = I2C_FREQUENCY(idx),		       \
 		}							       \
 	};								       \
-	DEVICE_DEFINE(twi_##idx,					       \
-		      DT_LABEL(I2C(idx)),				       \
+	DEVICE_DT_DEFINE(I2C(idx),					       \
 		      twi_##idx##_init,					       \
 		      twi_nrfx_pm_control,				       \
 		      &twi_##idx##_data,				       \
